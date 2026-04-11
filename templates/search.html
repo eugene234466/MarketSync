@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+{% if not query %}
+<!-- NO QUERY YET -->
+<div class="text-center py-5 mt-4">
+    <div class="display-1 mb-3">🔍</div>
+    <h3 class="fw-semibold text-white">Enter a ticker above to search</h3>
+    <p class="text-muted mt-2">Try searching for symbols like "AAPL", "NVDA", or "BTC-USD".</p>
+</div>
+
+{% elif results %}
+<!-- RESULTS FOUND -->
+<h2 class="fw-bold text-white mb-4">
+    Search Results for '<span class="text-success">{{ query }}</span>'
+</h2>
+
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    {% for result in results %}
+    <div class="col">
+        <div class="card h-100 bg-dark border-secondary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <h3 class="fw-bold text-white fs-3 mb-0">{{ result.symbol }}</h3>
+                        <p class="text-muted small text-uppercase mt-1">{{ result.name }}</p>
+                    </div>
+                    <div class="text-end">
+                        <p class="fw-bold text-white fs-5 mb-0">${{ result.price }}</p>
+                        <p class="small fw-semibold mb-0
+                            {% if result.change_percent >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {% if result.change_percent >= 0 %}▲{% else %}▼{% endif %}
+                            {{ result.change_percent }}%
+                        </p>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-3">
+                    <span class="badge bg-secondary">Vol: {{ '{:,}'.format(result.volume) if result.volume else 'N/A' }}</span>
+                    <span class="badge bg-secondary">
+                        MCap: {{ '${:,.0f}B'.format(result.market_cap / 1e9) if result.market_cap else 'N/A' }}
+                    </span>
+                </div>
+            </div>
+            <div class="card-footer bg-dark border-secondary">
+                <a href="{{ url_for('stock_detail', ticker=result.symbol) }}"
+                   class="btn btn-success btn-sm w-100">
+                    <i class="fa-solid fa-chart-line me-1"></i> View Details
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+<!-- NO RESULTS -->
+<div class="text-center py-5 mt-4">
+    <div class="display-1 mb-3">🚫</div>
+    <h3 class="fw-bold text-white">No results found for "{{ query }}"</h3>
+    <p class="text-muted mt-2">
+        We couldn't find a matching stock or crypto asset.<br>
+        Please check the ticker symbol and try again.
+    </p>
+    <a href="{{ url_for('index') }}" class="btn btn-outline-success mt-3">
+        ← Back to Dashboard
+    </a>
+</div>
+{% endif %}
+
+{% endblock %}

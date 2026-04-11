@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: marketsync
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    plan: free
+    envVars:
+      - key: SECRET_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false          

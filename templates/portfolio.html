@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold text-white mb-0">My Portfolio</h2>
+</div>
+
+<!-- SUMMARY CARDS -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card bg-dark border-success h-100">
+            <div class="card-body">
+                <p class="text-muted small text-uppercase mb-1">Total Value</p>
+                <h3 class="fw-bold text-white">${{ "%.2f"|format(total_value) }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card bg-dark h-100
+            {% if total_gain_loss >= 0 %}border-success{% else %}border-danger{% endif %}">
+            <div class="card-body">
+                <p class="text-muted small text-uppercase mb-1">Total Gain / Loss</p>
+                <h3 class="fw-bold
+                    {% if total_gain_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {% if total_gain_loss >= 0 %}+{% endif %}
+                    ${{ "%.2f"|format(total_gain_loss) }}
+                    <small class="fs-6">({{ "%.2f"|format(total_gain_loss_pct) }}%)</small>
+                </h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- HOLDINGS -->
+{% if not holdings %}
+<div class="card bg-dark border-secondary text-center py-5 mb-4">
+    <div class="card-body">
+        <div class="display-4 mb-3">📭</div>
+        <h4 class="text-white fw-bold">Your portfolio is empty</h4>
+        <p class="text-muted">Search for a stock and add it to get started.</p>
+        <a href="{{ url_for('search') }}" class="btn btn-success mt-2">
+            <i class="fa-solid fa-magnifying-glass me-1"></i> Search for a Stock
+        </a>
+    </div>
+</div>
+
+{% else %}
+<div class="card bg-dark border-secondary mb-4">
+    <div class="card-header border-secondary text-muted text-uppercase small">
+        Your Holdings
+    </div>
+    <div class="table-responsive">
+        <table class="table table-dark table-hover mb-0">
+            <thead class="text-muted small text-uppercase">
+                <tr>
+                    <th>Ticker</th>
+                    <th>Shares</th>
+                    <th>Buy Price</th>
+                    <th>Current Price</th>
+                    <th>Current Value</th>
+                    <th>Gain / Loss</th>
+                    <th>Gain / Loss %</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for holding in holdings %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('stock_detail', ticker=holding.ticker) }}"
+                           class="fw-bold text-success text-decoration-none">
+                            {{ holding.ticker }}
+                        </a>
+                    </td>
+                    <td class="text-white">{{ holding.shares }}</td>
+                    <td class="text-white">${{ "%.2f"|format(holding.buy_price) }}</td>
+                    <td class="text-white">${{ "%.2f"|format(holding.current_price) }}</td>
+                    <td class="text-white">${{ "%.2f"|format(holding.current_value) }}</td>
+                    <td class="fw-semibold
+                        {% if holding.gain_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {% if holding.gain_loss >= 0 %}+{% endif %}
+                        ${{ "%.2f"|format(holding.gain_loss) }}
+                    </td>
+                    <td class="fw-semibold
+                        {% if holding.gain_loss_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {% if holding.gain_loss_pct >= 0 %}+{% endif %}
+                        {{ "%.2f"|format(holding.gain_loss_pct) }}%
+                    </td>
+                    <td>
+                        <form action="{{ url_for('delete_portfolio', entry_id=holding.id) }}"
+                              method="POST">
+                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                    onclick="return confirm('Remove {{ holding.ticker }} from portfolio?')">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- ADD HOLDING FORM -->
+<div class="card bg-dark border-secondary">
+    <div class="card-header border-secondary text-muted text-uppercase small">
+        Add New Holding
+    </div>
+    <div class="card-body">
+        <form action="{{ url_for('add_portfolio') }}" method="POST">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label text-muted small">Ticker Symbol</label>
+                    <input type="text" name="ticker"
+                           class="form-control bg-dark text-white border-secondary"
+                           placeholder="e.g. AAPL" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label text-muted small">Number of Shares</label>
+                    <input type="number" name="shares"
+                           class="form-control bg-dark text-white border-secondary"
+                           placeholder="e.g. 10" step="any" min="0.0001" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label text-muted small">Buy Price per Share ($)</label>
+                    <input type="number" name="buy_price"
+                           class="form-control bg-dark text-white border-secondary"
+                           placeholder="e.g. 150.00" step="0.01" min="0.01" required>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="fa-solid fa-plus me-1"></i> Add
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

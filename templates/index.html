@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<!-- HERO -->
+<section class="py-5 text-center border-bottom border-secondary mb-4">
+    <h1 class="display-4 fw-bold text-success mb-2">MARKETSYNC</h1>
+    <p class="lead text-muted mb-4">Real-time stock &amp; crypto tracking powered by AI.</p>
+    <form action="{{ url_for('search') }}" method="GET" class="d-flex justify-content-center gap-2 mx-auto" style="max-width: 480px;">
+        <input type="text" name="q" placeholder="Track a stock (e.g. NVDA)"
+               class="form-control bg-dark text-white border-secondary">
+        <button type="submit" class="btn btn-success px-4">
+            <i class="fa-solid fa-magnifying-glass"></i>
+        </button>
+    </form>
+</section>
+
+<!-- MARKET OVERVIEW -->
+<section class="mb-5">
+    <h2 class="fw-bold mb-3 text-white">Market Overview</h2>
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-5 g-3">
+        {% for index in indices %}
+        <div class="col">
+            <div class="card h-100 bg-dark border-secondary">
+                <div class="card-body">
+                    <p class="text-muted small text-uppercase mb-1">{{ index.name }}</p>
+                    <h5 class="fw-bold text-white mb-1">${{ index.price }}</h5>
+                    <p class="mb-0 fw-semibold small
+                        {% if index.change_percent >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {% if index.change_percent >= 0 %}▲{% else %}▼{% endif %}
+                        {{ index.change_percent }}%
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<!-- QUICK TRACK -->
+<section class="mb-5">
+    <h2 class="fw-bold mb-3 text-white">Quick Track</h2>
+    <div class="d-flex flex-wrap gap-2">
+        {% set popular_tickers = ['AAPL', 'GOOGL', 'TSLA', 'NVDA', 'BTC-USD', 'ETH-USD', 'AMZN', 'MSFT'] %}
+        {% for ticker in popular_tickers %}
+        <a href="{{ url_for('stock_detail', ticker=ticker) }}"
+           class="btn btn-outline-success btn-sm">
+            {{ ticker }}
+        </a>
+        {% endfor %}
+    </div>
+</section>
+
+<hr class="border-secondary mb-5">
+
+<!-- PORTFOLIO / CTA -->
+<section class="mb-5">
+    {% if current_user.is_authenticated %}
+    <div class="card bg-dark border-success">
+        <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
+            <div>
+                <h4 class="fw-bold text-white mb-1">Welcome back, {{ current_user.username }} 👋</h4>
+                <p class="text-muted mb-0">Check your portfolio performance and manage your alerts.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('portfolio') }}" class="btn btn-success">
+                    <i class="fa-solid fa-chart-line me-1"></i> My Portfolio
+                </a>
+                <a href="{{ url_for('alerts') }}" class="btn btn-outline-success">
+                    <i class="fa-solid fa-bell me-1"></i> My Alerts
+                </a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card bg-dark border-secondary text-center p-5">
+        <h3 class="fw-bold text-white mb-2">Ready to level up your investing?</h3>
+        <p class="text-muted mb-4">Sign up to track your portfolio and set price alerts.</p>
+        <div class="d-flex justify-content-center gap-3">
+            <a href="{{ url_for('register') }}" class="btn btn-success px-4">Register</a>
+            <a href="{{ url_for('login') }}" class="btn btn-outline-secondary px-4">Login</a>
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+{% endblock %}

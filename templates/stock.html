@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- TOP ROW -->
+<div class="row mb-4 align-items-center">
+    <div class="col-md-8">
+        <h1 class="display-4 fw-bold text-white mb-0">{{ data.symbol }}</h1>
+        <p class="text-muted fs-5">{{ data.name }}</p>
+        <h2 class="fw-semibold text-white">${{ data.price }}</h2>
+        <span class="badge fs-6 {% if data.change_percent >= 0 %}bg-success{% else %}bg-danger{% endif %}">
+            {% if data.change_percent >= 0 %}▲{% else %}▼{% endif %}
+            ${{ data.change }} ({{ data.change_percent }}%)
+        </span>
+    </div>
+
+    <div class="col-md-4 text-md-end mt-3 mt-md-0">
+        {% if current_user.is_authenticated %}
+            {% if in_portfolio %}
+                <button class="btn btn-success me-2" disabled>
+                    <i class="fa-solid fa-check me-1"></i> In Portfolio
+                </button>
+            {% else %}
+                <button class="btn btn-outline-success me-2"
+                        data-bs-toggle="modal" data-bs-target="#portfolioModal">
+                    <i class="fa-solid fa-plus me-1"></i> Add to Portfolio
+                </button>
+            {% endif %}
+            <button class="btn btn-outline-warning"
+                    data-bs-toggle="modal" data-bs-target="#alertModal">
+                <i class="fa-solid fa-bell me-1"></i> Set Alert
+            </button>
+        {% else %}
+            <a href="{{ url_for('login') }}" class="btn btn-outline-success">
+                Login to Track
+            </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- PERIOD SELECTOR -->
+<div class="mb-3">
+    <div class="btn-group" role="group">
+        {% for p in ['1d', '5d', '1mo', '3mo', '6mo', '1y'] %}
+        <a href="{{ url_for('stock_detail', ticker=data.symbol, period=p) }}"
+           class="btn btn-sm {% if period == p %}btn-success{% else %}btn-outline-secondary{% endif %}">
+            {{ p.upper() }}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- PRICE CHART -->
+<div class="card bg-dark border-secondary mb-4">
+    <div class="card-body p-2">
+        <div id="chart"></div>
+    </div>
+</div>
+
+<!-- STATS ROW -->
+<div class="row row-cols-2 row-cols-md-3 row-cols-lg-6 g-3 mb-4">
+    {% set stats = [
+        ('Volume', data.volume | default('N/A')),
+        ('Market Cap', data.market_cap | default('N/A')),
+        ('52W High', data.high_52 | default('N/A')),
+        ('52W Low', data.low_52 | default('N/A')),
+        ('P/E Ratio', data.pe_ratio | default('N/A')),
+        ('Div Yield', data.dividend | default('N/A'))
+    ] %}
+    {% for title, value in stats %}
+    <div class="col">
+        <div class="card h-100 bg-dark border-secondary text-center">
+            <div class="card-body p-2">
+                <small class="text-muted text-uppercase d-block">{{ title }}</small>
+                <p class="card-text fw-bold text-white mb-0">{{ value }}</p>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- AI ANALYSIS -->
+<div class="card bg-dark border-success mb-4">
+    <div class="card-header bg-success text-dark fw-bold">
+        <i class="fa-solid fa-robot me-2"></i> AI Analysis
+    </div>
+    <div class="card-body">
+        <p class="card-text text-white mb-0">{{ analysis }}</p>
+    </div>
+</div>
+
+<!-- NEWS SECTION -->
+<div class="mb-5">
+    <h4 class="fw-bold text-white mb-3">
+        <i class="fa-solid fa-newspaper me-2"></i> Latest News
+    </h4>
+    {% if news %}
+        {% for article in news %}
+        <div class="card bg-dark border-secondary mb-2">
+            <div class="card-body py-2 px-3">
+                <a href="{{ article.link }}" target="_blank"
+                   class="text-decoration-none fw-semibold text-success">
+                    {{ article.title }}
+                </a>
+                <p class="text-muted small mb-0 mt-1">{{ article.date }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p class="text-muted">No recent news available for {{ data.symbol }}.</p>
+    {% endif %}
+</div>
+
+<!-- ADD TO PORTFOLIO MODAL -->
+{% if current_user.is_authenticated %}
+<div class="modal fade" id="portfolioModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_portfolio') }}" method="POST">
+            <div class="modal-content bg-dark border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title text-white">
+                        Add {{ data.symbol }} to Portfolio
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white"
+                            data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="ticker" value="{{ data.symbol }}">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Number of Shares</label>
+                        <input type="number" name="shares" class="form-control bg-dark text-white border-secondary"
+                               step="any" min="0.0001" placeholder="e.g. 10" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Buy Price per Share ($)</label>
+                        <input type="number" name="buy_price" class="form-control bg-dark text-white border-secondary"
+                               step="0.01" min="0.01" value="{{ data.price }}" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fa-solid fa-plus me-1"></i> Add
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- SET ALERT MODAL -->
+<div class="modal fade" id="alertModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_alert') }}" method="POST">
+            <div class="modal-content bg-dark border-secondary">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title text-white">
+                        Set Alert for {{ data.symbol }}
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white"
+                            data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="ticker" value="{{ data.symbol }}">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Target Price ($)</label>
+                        <input type="number" name="target_price"
+                               class="form-control bg-dark text-white border-secondary"
+                               step="0.01" min="0.01"
+                               placeholder="e.g. {{ data.price }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Alert Direction</label>
+                        <select name="direction"
+                                class="form-select bg-dark text-white border-secondary">
+                            <option value="above">Above target price ▲</option>
+                            <option value="below">Below target price ▼</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fa-solid fa-bell me-1"></i> Set Alert
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.27.0/plotly.min.js"></script>
+<script>
+    var dates = {{ dates | tojson }};
+    var prices = {{ prices | tojson }};
+    var symbol = {{ data.symbol | tojson }};
+    var isPositive = {{ (data.change_percent >= 0) | tojson }};
+    var lineColor = isPositive ? '#00ff88' : '#ff3355';
+
+    var trace = {
+        x: dates,
+        y: prices,
+        type: 'scatter',
+        mode: 'lines',
+        name: symbol,
+        line: { color: lineColor, width: 2 },
+        fill: 'tozeroy',
+        fillcolor: isPositive ? 'rgba(0,255,136,0.05)' : 'rgba(255,51,85,0.05)'
+    };
+
+    var layout = {
+        height: 380,
+        paper_bgcolor: '#111111',
+        plot_bgcolor: '#111111',
+        font: { color: '#aaaaaa' },
+        margin: { t: 10, b: 40, l: 60, r: 20 },
+        xaxis: {
+            type: 'date',
+            gridcolor: '#222222',
+            zerolinecolor: '#333333'
+        },
+        yaxis: {
+            title: 'Price (USD)',
+            gridcolor: '#222222',
+            zerolinecolor: '#333333'
+        }
+    };
+
+    var config = {
+        responsive: true,
+        displayModeBar: false
+    };
+
+    Plotly.newPlot('chart', [trace], layout, config);
+</script>
+{% endblock %}

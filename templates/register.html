@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="card bg-dark border-secondary" style="width: 100%; max-width: 460px;">
+        <div class="card-body p-4">
+
+            <!-- LOGO -->
+            <div class="text-center mb-4">
+                <img src="{{ url_for('static', filename='images/logo.png') }}"
+                     alt="MarketSync Logo" style="height: 64px; width: auto;">
+                <h3 class="fw-bold text-white mt-3 mb-1">Create Account</h3>
+                <p class="text-muted small">Join MarketSync today — it's free</p>
+            </div>
+
+            <!-- FORM -->
+            <form action="{{ url_for('register') }}" method="POST">
+                <div class="mb-3">
+                    <label class="form-label text-muted small text-uppercase">Username</label>
+                    <input type="text" name="username"
+                           class="form-control bg-dark text-white border-secondary"
+                           placeholder="e.g. johndoe" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted small text-uppercase">Email Address</label>
+                    <input type="email" name="email"
+                           class="form-control bg-dark text-white border-secondary"
+                           placeholder="you@example.com" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted small text-uppercase">Password</label>
+                    <input type="password" name="password" id="password"
+                           class="form-control bg-dark text-white border-secondary"
+                           placeholder="••••••••" required>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label text-muted small text-uppercase">Confirm Password</label>
+                    <input type="password" name="confirm_password" id="confirm_password"
+                           class="form-control bg-dark text-white border-secondary"
+                           placeholder="••••••••" required>
+                    <div id="passwordError" class="text-danger small mt-1" style="display:none;">
+                        Passwords do not match.
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success w-100 fw-bold py-2" id="registerBtn">
+                    <i class="fa-solid fa-user-plus me-2"></i> Create Account
+                </button>
+            </form>
+
+            <hr class="border-secondary my-4">
+
+            <p class="text-center text-muted small mb-0">
+                Already have an account?
+                <a href="{{ url_for('login') }}" class="text-success fw-semibold">
+                    Login here
+                </a>
+            </p>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Client-side password match validation
+    const password = document.getElementById('password');
+    const confirm = document.getElementById('confirm_password');
+    const error = document.getElementById('passwordError');
+    const btn = document.getElementById('registerBtn');
+
+    function checkPasswords() {
+        if (confirm.value && password.value !== confirm.value) {
+            error.style.display = 'block';
+            btn.disabled = true;
+        } else {
+            error.style.display = 'none';
+            btn.disabled = false;
+        }
+    }
+
+    password.addEventListener('input', checkPasswords);
+    confirm.addEventListener('input', checkPasswords);
+</script>
+{% endblock %}

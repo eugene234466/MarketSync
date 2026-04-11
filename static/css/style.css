@@ -1,0 +1,387 @@
+/* ─────────────────────────────────────────
+   CSS VARIABLES — Bloomberg Dark Terminal
+   ───────────────────────────────────────── */
+:root {
+    --bg:           #0a0a0a;
+    --bg-card:      #111111;
+    --bg-nav:       #0d0d0d;
+    --green:        #00ff88;
+    --green-dim:    #00cc66;
+    --red:          #ff3355;
+    --text:         #e0e0e0;
+    --text-muted:   #666666;
+    --border:       #1e1e1e;
+    --border-green: rgba(0, 255, 136, 0.3);
+    --font:         'JetBrains Mono', monospace;
+}
+
+/* ─────────────────────────────────────────
+   GLOBAL RESET
+   ───────────────────────────────────────── */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    background: var(--bg) !important;
+    overflow-x: hidden;
+}
+
+body {
+    background: var(--bg) !important;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* ─────────────────────────────────────────
+   BOOTSTRAP OVERRIDES
+   ───────────────────────────────────────── */
+.bg-dark {
+    background-color: var(--bg-card) !important;
+}
+
+.bg-light {
+    background-color: var(--bg) !important;
+}
+
+.border-secondary {
+    border-color: var(--border) !important;
+}
+
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
+.text-success {
+    color: var(--green) !important;
+}
+
+.text-danger {
+    color: var(--red) !important;
+}
+
+.btn-success {
+    background-color: var(--green) !important;
+    border-color: var(--green) !important;
+    color: #000000 !important;
+    font-weight: 700;
+}
+
+.btn-success:hover {
+    background-color: var(--green-dim) !important;
+    border-color: var(--green-dim) !important;
+    color: #000000 !important;
+}
+
+.btn-outline-success {
+    border-color: var(--green) !important;
+    color: var(--green) !important;
+}
+
+.btn-outline-success:hover {
+    background-color: var(--green) !important;
+    color: #000000 !important;
+}
+
+.btn-outline-danger {
+    border-color: var(--red) !important;
+    color: var(--red) !important;
+}
+
+.btn-outline-danger:hover {
+    background-color: var(--red) !important;
+    color: #ffffff !important;
+}
+
+.badge.bg-success {
+    background-color: var(--green) !important;
+    color: #000000 !important;
+}
+
+/* ─────────────────────────────────────────
+   NAVBAR
+   ───────────────────────────────────────── */
+.navbar {
+    background-color: var(--bg-nav) !important;
+    border-bottom: 1px solid var(--border);
+    padding: 0.6rem 1rem;
+}
+
+/* LOGO — sized and blended into dark navbar */
+.navbar-logo {
+    height: 36px;
+    width: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.2);
+}
+
+.brand-text {
+    font-family: var(--font);
+    font-weight: 800;
+    font-size: 1rem;
+    letter-spacing: 2px;
+    color: var(--green);
+    text-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
+}
+
+.navbar-brand:hover .brand-text {
+    color: var(--green-dim);
+}
+
+.navbar-brand:hover .navbar-logo {
+    border-color: var(--green);
+    box-shadow: 0 0 12px rgba(0, 255, 136, 0.4);
+}
+
+/* SEARCH FORM */
+.search-form {
+    width: 40%;
+    max-width: 480px;
+}
+
+@media (max-width: 991px) {
+    .search-form {
+        width: 100%;
+        max-width: 100%;
+        margin: 0.5rem 0;
+    }
+}
+
+.nav-link {
+    color: var(--text-muted) !important;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+    color: var(--green) !important;
+}
+
+.navbar .form-control {
+    font-family: var(--font);
+    font-size: 0.8rem;
+    background: #1a1a1a !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+}
+
+.navbar .form-control:focus {
+    border-color: var(--green) !important;
+    box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.15) !important;
+}
+
+.navbar .form-control::placeholder {
+    color: var(--text-muted);
+}
+
+/* ─────────────────────────────────────────
+   CARDS
+   ───────────────────────────────────────── */
+.card {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border) !important;
+    border-radius: 6px;
+}
+
+.card-header {
+    background-color: transparent !important;
+    border-color: var(--border) !important;
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+.border-success {
+    border-color: var(--border-green) !important;
+}
+
+/* ─────────────────────────────────────────
+   TABLES
+   ───────────────────────────────────────── */
+.table-dark {
+    --bs-table-bg: var(--bg-card);
+    --bs-table-striped-bg: #161616;
+    --bs-table-hover-bg: #1a1a1a;
+    --bs-table-border-color: var(--border);
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.table thead th {
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-muted) !important;
+    border-color: var(--border) !important;
+    padding: 0.75rem 1rem;
+}
+
+.table tbody td {
+    border-color: var(--border) !important;
+    padding: 0.75rem 1rem;
+    vertical-align: middle;
+}
+
+/* ─────────────────────────────────────────
+   FORM CONTROLS
+   ───────────────────────────────────────── */
+.form-control,
+.form-select {
+    background-color: #1a1a1a !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+    font-family: var(--font);
+    font-size: 0.85rem;
+    border-radius: 4px;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--green) !important;
+    box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.15) !important;
+    background-color: #1a1a1a !important;
+    color: var(--text) !important;
+}
+
+.form-control::placeholder {
+    color: #444444;
+}
+
+.form-label {
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 0.4rem;
+}
+
+/* ─────────────────────────────────────────
+   MODALS
+   ───────────────────────────────────────── */
+.modal-content {
+    background-color: var(--bg-card) !important;
+    border-color: var(--border) !important;
+}
+
+.modal-header {
+    border-color: var(--border) !important;
+}
+
+.modal-footer {
+    border-color: var(--border) !important;
+}
+
+/* ─────────────────────────────────────────
+   FLASH MESSAGES
+   ───────────────────────────────────────── */
+.alert-success {
+    background-color: rgba(0, 255, 136, 0.1) !important;
+    border-color: var(--green) !important;
+    color: var(--green) !important;
+}
+
+.alert-danger {
+    background-color: rgba(255, 51, 85, 0.1) !important;
+    border-color: var(--red) !important;
+    color: var(--red) !important;
+}
+
+.btn-close {
+    filter: invert(1);
+}
+
+/* ─────────────────────────────────────────
+   FOOTER
+   ───────────────────────────────────────── */
+.footer {
+    background-color: var(--bg-nav) !important;
+    border-top: 1px solid var(--border) !important;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* ─────────────────────────────────────────
+   DROPDOWN
+   ───────────────────────────────────────── */
+.dropdown-menu {
+    background-color: var(--bg-card);
+    border-color: var(--border);
+}
+
+.dropdown-item {
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.dropdown-item:hover {
+    background-color: #1a1a1a;
+    color: var(--green);
+}
+
+.dropdown-item.text-danger:hover {
+    background-color: rgba(255, 51, 85, 0.1);
+    color: var(--red) !important;
+}
+
+/* ─────────────────────────────────────────
+   SCROLLBAR
+   ───────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: #333333;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--green);
+}
+
+/* ─────────────────────────────────────────
+   RESPONSIVE
+   ───────────────────────────────────────── */
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 0.9rem;
+    }
+
+    .table-responsive {
+        font-size: 0.8rem;
+    }
+
+    .display-4 {
+        font-size: 2rem;
+    }
+
+    .btn-group .btn {
+        font-size: 0.65rem;
+        padding: 0.25rem 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    body {
+        font-size: 13px;
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+}

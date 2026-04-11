@@ -1,0 +1,10 @@
+Flask
+flask-login
+flask-sqlalchemy
+flask-bcrypt
+yfinance
+feedparser
+groq
+python-dotenv
+apscheduler
+gunicorn

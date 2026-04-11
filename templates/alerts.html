@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold text-white mb-0">My Alerts</h2>
+</div>
+
+<!-- ALERTS TABLE -->
+{% if not alerts %}
+<div class="card bg-dark border-secondary text-center py-5 mb-4">
+    <div class="card-body">
+        <div class="display-4 mb-3">🔔</div>
+        <h4 class="text-white fw-bold">No alerts set</h4>
+        <p class="text-muted">Go to a stock page to set a price alert.</p>
+        <a href="{{ url_for('search') }}" class="btn btn-success mt-2">
+            <i class="fa-solid fa-magnifying-glass me-1"></i> Find a Stock
+        </a>
+    </div>
+</div>
+
+{% else %}
+<div class="card bg-dark border-secondary mb-4">
+    <div class="card-header border-secondary text-muted text-uppercase small">
+        Your Alerts
+    </div>
+    <div class="table-responsive">
+        <table class="table table-dark table-hover mb-0">
+            <thead class="text-muted small text-uppercase">
+                <tr>
+                    <th>Ticker</th>
+                    <th>Direction</th>
+                    <th>Target Price</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alert in alerts %}
+                <tr>
+                    <td>
+                        <a href="{{ url_for('stock_detail', ticker=alert.ticker) }}"
+                           class="fw-bold text-success text-decoration-none">
+                            {{ alert.ticker }}
+                        </a>
+                    </td>
+                    <td>
+                        {% if alert.direction == 'above' %}
+                            <span class="text-success">▲ Above</span>
+                        {% else %}
+                            <span class="text-danger">▼ Below</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-white">${{ "%.2f"|format(alert.target_price) }}</td>
+                    <td>
+                        {% if alert.active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Triggered</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted small">
+                        {{ alert.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    </td>
+                    <td>
+                        <form action="{{ url_for('delete_alert', alert_id=alert.id) }}"
+                              method="POST">
+                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                    onclick="return confirm('Delete this alert for {{ alert.ticker }}?')">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- ADD ALERT FORM -->
+<div class="card bg-dark border-secondary">
+    <div class="card-header border-secondary text-muted text-uppercase small">
+        Add New Alert
+    </div>
+    <div class="card-body">
+        <form action="{{ url_for('add_alert') }}" method="POST">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label text-muted small">Ticker Symbol</label>
+                    <input type="text" name="ticker"
+                           class="form-control bg-dark text-white border-secondary"
+                           placeholder="e.g. AAPL" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label text-muted small">Target Price ($)</label>
+                    <input type="number" name="target_price"
+                           class="form-control bg-dark text-white border-secondary"
+                           placeholder="e.g. 200.00" step="0.01" min="0.01" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label text-muted small">Direction</label>
+                    <select name="direction"
+                            class="form-select bg-dark text-white border-secondary">
+                        <option value="above">Above target price ▲</option>
+                        <option value="below">Below target price ▼</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-warning w-100">
+                        <i class="fa-solid fa-bell me-1"></i> Set Alert
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
