@@ -1,4 +1,4 @@
-```markdown
+
 # 📊 MarketSync — Real-Time Market Intelligence Platform
 
 MarketSync is a modern, real-time financial insights platform built with Flask. It delivers live market data, portfolio tracking, alerts, and AI-powered insights in a sleek terminal-inspired interface.
@@ -32,7 +32,6 @@ Designed to feel like a professional trading dashboard, MarketSync combines spee
 
 ## 📂 Project Structure
 
-```
 
 marketsync/
 ├── app/
@@ -52,7 +51,7 @@ marketsync/
 ├── requirements.txt
 └── run.py
 
-```
+
 
 ---
 
