@@ -22,6 +22,9 @@ bcrypt.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+with app.app_context:
+    db.create_all()
+
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
 # ── GSE TICKERS ─────────────────────────────────────────────
@@ -264,6 +267,4 @@ def portfolio():
 
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
