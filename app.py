@@ -23,7 +23,7 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 with app.app_context():
-     db.create_all()
+    db.create_all()
 
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
@@ -31,38 +31,62 @@ groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 # ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
 
 # ── AFRICAN STOCK FUNCTIONS ───────────────────────────────────────────────────
-
-# Exchange prefixes users can type
-# GSE:MTNGH  → Ghana Stock Exchange
-# NGX:DANGCEM → Nigerian Exchange
-# BRVM:SNTS  → BRVM (West Africa)
+# Supported prefixes:
+#   GSE:MTNGH    → Ghana Stock Exchange  (dev.kwayisi.org JSON API)
+#   NGX:DANGCEM  → Nigerian Exchange     (afx.kwayisi.org scraper)
+#   BRVM:SNTS    → BRVM West Africa      (afx.kwayisi.org scraper)
 
 AFRICAN_EXCHANGES = {
-    'GSE': 'Ghana Stock Exchange (GHS)',
-    'NGX': 'Nigerian Exchange (NGN)',
+    'GSE':  'Ghana Stock Exchange (GHS)',
+    'NGX':  'Nigerian Exchange (NGN)',
     'BRVM': 'BRVM West Africa (XOF)'
 }
 
+HEADERS = {
+    'User-Agent': (
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/120.0.0.0 Safari/537.36'
+    )
+}
+
+
+def _parse_number(text):
+    """Safely parse a number string — strips commas, spaces."""
+    try:
+        return float(str(text).replace(',', '').replace(' ', '').strip())
+    except Exception:
+        return None
+
+
 def get_gse_stock(ticker):
-    """Fetch GSE stock from free dev.kwayisi.org API"""
+    """
+    Fetch GSE stock via dev.kwayisi.org free JSON API.
+    API returns: { name, price, change, volume, ... }
+    change field is already the % change value.
+    """
     try:
         ticker = ticker.upper()
+        # Try individual equity endpoint
         url = f"https://dev.kwayisi.org/apis/gse/equities/{ticker}"
-        res = requests.get(url, timeout=10)
+        res = requests.get(url, headers=HEADERS, timeout=12)
         if res.status_code == 404:
             return None
+        if res.status_code != 200:
+            return None
         data = res.json()
-        price = data.get('price', 0)
-        prev = data.get('prev', price)
-        change = round(price - prev, 4)
-        change_pct = round((change / prev * 100), 2) if prev else 0
+        price = _parse_number(data.get('price', 0)) or 0
+        # API returns 'change' as percent change
+        change_pct = _parse_number(data.get('change', 0)) or 0
+        change = round(price * change_pct / 100, 4)
+        prev = round(price - change, 4) if change else price
         return {
             'symbol': f"GSE:{ticker}",
             'name': data.get('name', ticker),
-            'price': price,
-            'prev_close': prev,
-            'change': change,
-            'change_percent': change_pct,
+            'price': round(price, 4),
+            'prev_close': round(prev, 4),
+            'change': round(change, 4),
+            'change_percent': round(change_pct, 2),
             'volume': data.get('volume'),
             'market_cap': None,
             'high_52': None,
@@ -72,52 +96,96 @@ def get_gse_stock(ticker):
             'currency': 'GHS',
             'exchange': 'Ghana Stock Exchange'
         }
-    except Exception:
+    except Exception as e:
+        print(f"[GSE] Error fetching {ticker}: {e}")
         return None
 
 
-def get_african_stock_afx(ticker, exchange):
-    """Scrape NGX or BRVM stock from afx.kwayisi.org"""
+def get_gse_all():
+    """Fetch all live GSE stocks — used for search."""
     try:
-        exchange_map = {
-            'NGX': 'ngx',
-            'BRVM': 'brvm'
-        }
-        ex = exchange_map.get(exchange.upper())
-        if not ex:
-            return None
-        ticker = ticker.lower()
-        url = f"https://afx.kwayisi.org/{ex}/{ticker}.html"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get(
+            "https://dev.kwayisi.org/apis/gse/live",
+            headers=HEADERS, timeout=12
+        )
         if res.status_code != 200:
+            return []
+        return res.json()  # list of {name, price, change, volume}
+    except Exception as e:
+        print(f"[GSE] Error fetching all: {e}")
+        return []
+
+
+def get_african_stock_afx(ticker, exchange):
+    """
+    Scrape NGX or BRVM stock data from afx.kwayisi.org.
+    Page structure: table with rows of label/value pairs.
+    """
+    try:
+        ex_slug = {'NGX': 'ngx', 'BRVM': 'brvm'}.get(exchange.upper())
+        if not ex_slug:
             return None
+
+        ticker_lower = ticker.lower()
+        url = f"https://afx.kwayisi.org/{ex_slug}/{ticker_lower}.html"
+        res = requests.get(url, headers=HEADERS, timeout=12)
+        if res.status_code != 200:
+            print(f"[AFX] {url} returned {res.status_code}")
+            return None
+
         soup = BeautifulSoup(res.text, 'html.parser')
 
-        # Extract price from page
-        price_el = soup.find('span', class_='price')
-        change_el = soup.find('span', class_='chg')
-        name_el = soup.find('h1')
+        # ── Extract company name from <h2> or <title> ──
+        name = ticker.upper()
+        h2 = soup.find('h2')
+        if h2:
+            name = h2.text.strip().split('(')[0].strip()
+        elif soup.title:
+            name = soup.title.text.strip().split('|')[0].strip()
 
-        if not price_el:
+        # ── Extract price and change from the data table ──
+        # AFX uses a <table> with rows: label | value
+        price = None
+        change_pct = None
+
+        tables = soup.find_all('table')
+        for table in tables:
+            rows = table.find_all('tr')
+            for row in rows:
+                cells = row.find_all('td')
+                if len(cells) >= 2:
+                    label = cells[0].text.strip().lower()
+                    value = cells[1].text.strip()
+                    if 'price' in label or 'last' in label or 'close' in label:
+                        price = _parse_number(value)
+                    if 'change' in label and '%' in value:
+                        change_pct = _parse_number(value.replace('%', ''))
+
+        # Fallback: look for price in any <strong> or <b> tag
+        if price is None:
+            for tag in soup.find_all(['strong', 'b', 'span']):
+                val = _parse_number(tag.text)
+                if val and val > 0.01:
+                    price = val
+                    break
+
+        if price is None:
+            print(f"[AFX] Could not find price for {ticker} on {exchange}")
             return None
 
-        price = float(price_el.text.strip().replace(',', ''))
-        change_text = change_el.text.strip() if change_el else '0'
-        change_pct = float(change_text.replace('%', '').strip())
+        change_pct = change_pct or 0
         change = round(price * change_pct / 100, 4)
         prev = round(price - change, 4)
-        name = name_el.text.strip() if name_el else ticker.upper()
         currency = 'NGN' if exchange == 'NGX' else 'XOF'
         exchange_name = 'Nigerian Exchange' if exchange == 'NGX' else 'BRVM West Africa'
 
         return {
             'symbol': f"{exchange.upper()}:{ticker.upper()}",
             'name': name,
-            'price': price,
-            'prev_close': prev,
-            'change': change,
-            'change_percent': change_pct,
+            'price': round(price, 4),
+            'prev_close': round(prev, 4),
+            'change': round(change, 4),
+            'change_percent': round(change_pct, 2),
             'volume': None,
             'market_cap': None,
             'high_52': None,
@@ -127,25 +195,28 @@ def get_african_stock_afx(ticker, exchange):
             'currency': currency,
             'exchange': exchange_name
         }
-    except Exception:
+    except Exception as e:
+        print(f"[AFX] Error fetching {ticker} on {exchange}: {e}")
         return None
 
 
 def get_african_stock(ticker_str):
     """
-    Parse African exchange prefix and fetch data.
-    Accepts: GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS
+    Route African ticker to the correct data source.
+    Format: EXCHANGE:TICKER  e.g. GSE:MTNGH
     """
     try:
         if ':' not in ticker_str:
             return None
-        exchange, ticker = ticker_str.upper().split(':', 1)
+        parts = ticker_str.upper().split(':', 1)
+        exchange, ticker = parts[0], parts[1]
         if exchange == 'GSE':
             return get_gse_stock(ticker)
         elif exchange in ['NGX', 'BRVM']:
             return get_african_stock_afx(ticker, exchange)
         return None
-    except Exception:
+    except Exception as e:
+        print(f"[African] Routing error: {e}")
         return None
 
 
