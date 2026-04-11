@@ -1,21 +1,16 @@
 import os
-import logging
-from dotenv import load_dotenv
-
 import yfinance as yf
 import feedparser
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from groq import Groq
+from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
-
 from models import db, bcrypt, login_manager, User, Portfolio, Alert
 
 load_dotenv()
-
-# ========================= APP SETUP =========================
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_123')
@@ -28,17 +23,10 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 with app.app_context():
-   db.create_all()
+     db.create_all()
 
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
-# ========================= LOGGING =========================
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 # ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
 
@@ -55,20 +43,12 @@ AFRICAN_EXCHANGES = {
     'BRVM': 'BRVM West Africa (XOF)'
 }
 
-
 def get_gse_stock(ticker):
     """Fetch GSE stock from free dev.kwayisi.org API"""
     try:
         ticker = ticker.upper()
         url = f"https://dev.kwayisi.org/apis/gse/equities/{ticker}"
-        res = requests.get(url, timeout=12)
-        
-        # === DEBUG PRINTS (remove after testing) ===
-        print(f"[DEBUG GSE] {ticker} → Status: {res.status_code} | URL: {url}")
-        if res.status_code == 200:
-            print(f"[DEBUG GSE] Response preview: {res.text[:500]}...")
-        # ===========================================
-        
+        res = requests.get(url, timeout=10)
         if res.status_code == 404:
             return None
         data = res.json()
@@ -92,8 +72,7 @@ def get_gse_stock(ticker):
             'currency': 'GHS',
             'exchange': 'Ghana Stock Exchange'
         }
-    except Exception as e:
-        print(f"[DEBUG GSE ERROR] {ticker}: {str(e)}")
+    except Exception:
         return None
 
 
@@ -109,28 +88,16 @@ def get_african_stock_afx(ticker, exchange):
             return None
         ticker = ticker.lower()
         url = f"https://afx.kwayisi.org/{ex}/{ticker}.html"
-        headers = {'User-Agent': 'Mozilla/5.0 (compatible; MarketSync/1.0)'}
-        res = requests.get(url, headers=headers, timeout=12)
-        
-        # === DEBUG PRINTS (remove after testing) ===
-        print(f"[DEBUG AFX] {exchange}:{ticker.upper()} → Status: {res.status_code} | URL: {url}")
-        # ===========================================
-        
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=10)
         if res.status_code != 200:
             return None
         soup = BeautifulSoup(res.text, 'html.parser')
 
+        # Extract price from page
         price_el = soup.find('span', class_='price')
         change_el = soup.find('span', class_='chg')
         name_el = soup.find('h1')
-
-        # === DEBUG PRINTS (remove after testing) ===
-        print(f"[DEBUG AFX] Price element found: {price_el is not None}")
-        if price_el:
-            print(f"[DEBUG AFX] Price text: '{price_el.text.strip()}'")
-        if change_el:
-            print(f"[DEBUG AFX] Change text: '{change_el.text.strip()}'")
-        # ===========================================
 
         if not price_el:
             return None
@@ -160,8 +127,7 @@ def get_african_stock_afx(ticker, exchange):
             'currency': currency,
             'exchange': exchange_name
         }
-    except Exception as e:
-        print(f"[DEBUG AFX ERROR] {exchange}:{ticker}: {str(e)}")
+    except Exception:
         return None
 
 
@@ -567,5 +533,4 @@ def logout():
 
 
 if __name__ == '__main__':
-    logger.info("MarketSync started - Debug prints enabled for African stocks")
     app.run(debug=True)
