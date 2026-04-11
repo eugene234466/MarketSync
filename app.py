@@ -1,6 +1,8 @@
 import os
 import yfinance as yf
 import feedparser
+import requests
+from bs4 import BeautifulSoup
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from groq import Groq
@@ -19,7 +21,6 @@ db.init_app(app)
 bcrypt.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
-
 with app.app_context():
     db.create_all()
 
@@ -28,7 +29,134 @@ groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
 # ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
 
+# ── AFRICAN STOCK FUNCTIONS ───────────────────────────────────────────────────
+
+# Exchange prefixes users can type
+# GSE:MTNGH  → Ghana Stock Exchange
+# NGX:DANGCEM → Nigerian Exchange
+# BRVM:SNTS  → BRVM (West Africa)
+
+AFRICAN_EXCHANGES = {
+    'GSE': 'Ghana Stock Exchange (GHS)',
+    'NGX': 'Nigerian Exchange (NGN)',
+    'BRVM': 'BRVM West Africa (XOF)'
+}
+
+def get_gse_stock(ticker):
+    """Fetch GSE stock from free dev.kwayisi.org API"""
+    try:
+        ticker = ticker.upper()
+        url = f"https://dev.kwayisi.org/apis/gse/equities/{ticker}"
+        res = requests.get(url, timeout=10)
+        if res.status_code == 404:
+            return None
+        data = res.json()
+        price = data.get('price', 0)
+        prev = data.get('prev', price)
+        change = round(price - prev, 4)
+        change_pct = round((change / prev * 100), 2) if prev else 0
+        return {
+            'symbol': f"GSE:{ticker}",
+            'name': data.get('name', ticker),
+            'price': price,
+            'prev_close': prev,
+            'change': change,
+            'change_percent': change_pct,
+            'volume': data.get('volume'),
+            'market_cap': None,
+            'high_52': None,
+            'low_52': None,
+            'pe_ratio': None,
+            'dividend': None,
+            'currency': 'GHS',
+            'exchange': 'Ghana Stock Exchange'
+        }
+    except Exception:
+        return None
+
+
+def get_african_stock_afx(ticker, exchange):
+    """Scrape NGX or BRVM stock from afx.kwayisi.org"""
+    try:
+        exchange_map = {
+            'NGX': 'ngx',
+            'BRVM': 'brvm'
+        }
+        ex = exchange_map.get(exchange.upper())
+        if not ex:
+            return None
+        ticker = ticker.lower()
+        url = f"https://afx.kwayisi.org/{ex}/{ticker}.html"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code != 200:
+            return None
+        soup = BeautifulSoup(res.text, 'html.parser')
+
+        # Extract price from page
+        price_el = soup.find('span', class_='price')
+        change_el = soup.find('span', class_='chg')
+        name_el = soup.find('h1')
+
+        if not price_el:
+            return None
+
+        price = float(price_el.text.strip().replace(',', ''))
+        change_text = change_el.text.strip() if change_el else '0'
+        change_pct = float(change_text.replace('%', '').strip())
+        change = round(price * change_pct / 100, 4)
+        prev = round(price - change, 4)
+        name = name_el.text.strip() if name_el else ticker.upper()
+        currency = 'NGN' if exchange == 'NGX' else 'XOF'
+        exchange_name = 'Nigerian Exchange' if exchange == 'NGX' else 'BRVM West Africa'
+
+        return {
+            'symbol': f"{exchange.upper()}:{ticker.upper()}",
+            'name': name,
+            'price': price,
+            'prev_close': prev,
+            'change': change,
+            'change_percent': change_pct,
+            'volume': None,
+            'market_cap': None,
+            'high_52': None,
+            'low_52': None,
+            'pe_ratio': None,
+            'dividend': None,
+            'currency': currency,
+            'exchange': exchange_name
+        }
+    except Exception:
+        return None
+
+
+def get_african_stock(ticker_str):
+    """
+    Parse African exchange prefix and fetch data.
+    Accepts: GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS
+    """
+    try:
+        if ':' not in ticker_str:
+            return None
+        exchange, ticker = ticker_str.upper().split(':', 1)
+        if exchange == 'GSE':
+            return get_gse_stock(ticker)
+        elif exchange in ['NGX', 'BRVM']:
+            return get_african_stock_afx(ticker, exchange)
+        return None
+    except Exception:
+        return None
+
+
 def get_stock_data(ticker):
+    # ── Try African exchange prefix first (GSE:, NGX:, BRVM:) ──
+    if ':' in ticker:
+        african_data = get_african_stock(ticker)
+        if african_data:
+            return african_data
+        return None
+
+    # ── Try Yahoo Finance ──
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
@@ -51,6 +179,8 @@ def get_stock_data(ticker):
             'low_52': info.get('fiftyTwoWeekLow'),
             'pe_ratio': info.get('trailingPE'),
             'dividend': info.get('dividendYield'),
+            'currency': 'USD',
+            'exchange': info.get('exchange', 'Yahoo Finance')
         }
     except Exception:
         return None
