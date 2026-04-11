@@ -28,7 +28,7 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 with app.app_context():
-    db.create_all()
+   db.create_all()
 
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
@@ -61,7 +61,14 @@ def get_gse_stock(ticker):
     try:
         ticker = ticker.upper()
         url = f"https://dev.kwayisi.org/apis/gse/equities/{ticker}"
-        res = requests.get(url, timeout=10)
+        res = requests.get(url, timeout=12)
+        
+        # === DEBUG PRINTS (remove after testing) ===
+        print(f"[DEBUG GSE] {ticker} → Status: {res.status_code} | URL: {url}")
+        if res.status_code == 200:
+            print(f"[DEBUG GSE] Response preview: {res.text[:500]}...")
+        # ===========================================
+        
         if res.status_code == 404:
             return None
         data = res.json()
@@ -85,7 +92,8 @@ def get_gse_stock(ticker):
             'currency': 'GHS',
             'exchange': 'Ghana Stock Exchange'
         }
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG GSE ERROR] {ticker}: {str(e)}")
         return None
 
 
@@ -101,16 +109,28 @@ def get_african_stock_afx(ticker, exchange):
             return None
         ticker = ticker.lower()
         url = f"https://afx.kwayisi.org/{ex}/{ticker}.html"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers, timeout=10)
+        headers = {'User-Agent': 'Mozilla/5.0 (compatible; MarketSync/1.0)'}
+        res = requests.get(url, headers=headers, timeout=12)
+        
+        # === DEBUG PRINTS (remove after testing) ===
+        print(f"[DEBUG AFX] {exchange}:{ticker.upper()} → Status: {res.status_code} | URL: {url}")
+        # ===========================================
+        
         if res.status_code != 200:
             return None
         soup = BeautifulSoup(res.text, 'html.parser')
 
-        # Extract price from page
         price_el = soup.find('span', class_='price')
         change_el = soup.find('span', class_='chg')
         name_el = soup.find('h1')
+
+        # === DEBUG PRINTS (remove after testing) ===
+        print(f"[DEBUG AFX] Price element found: {price_el is not None}")
+        if price_el:
+            print(f"[DEBUG AFX] Price text: '{price_el.text.strip()}'")
+        if change_el:
+            print(f"[DEBUG AFX] Change text: '{change_el.text.strip()}'")
+        # ===========================================
 
         if not price_el:
             return None
@@ -140,7 +160,8 @@ def get_african_stock_afx(ticker, exchange):
             'currency': currency,
             'exchange': exchange_name
         }
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG AFX ERROR] {exchange}:{ticker}: {str(e)}")
         return None
 
 
@@ -546,5 +567,5 @@ def logout():
 
 
 if __name__ == '__main__':
-    logger.info("MarketSync started successfully")
+    logger.info("MarketSync started - Debug prints enabled for African stocks")
     app.run(debug=True)
