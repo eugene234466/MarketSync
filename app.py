@@ -22,9 +22,6 @@ bcrypt.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-with app.app_context():
-    db.create_all()
-
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
 
@@ -259,6 +256,9 @@ def get_stock_data(ticker):
 
 
 def get_stock_history(ticker, period='1mo'):
+    # African exchange tickers have no Yahoo Finance history
+    if ':' in ticker:
+        return [], []
     try:
         df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
         if df.empty:
@@ -272,7 +272,12 @@ def get_stock_history(ticker, period='1mo'):
 
 def get_news(ticker):
     try:
-        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+        # For African tickers, use company name as search query
+        if ':' in ticker:
+            search_term = ticker.split(':')[1]
+        else:
+            search_term = ticker
+        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={search_term}&region=US&lang=en-US"
         feed = feedparser.parse(url)
         return [
             {
@@ -371,11 +376,39 @@ def index():
 def search():
     query = request.args.get('q', '').strip().upper()
     results = []
+    exchange_hint = None
+
     if query:
-        data = get_stock_data(query)
-        if data:
-            results.append(data)
-    return render_template('search.html', results=results, query=query)
+        # Detect African exchange prefix
+        if ':' in query:
+            exchange_hint = query.split(':')[0]
+            data = get_stock_data(query)
+            if data:
+                results.append(data)
+            else:
+                flash(
+                    f'Could not find {query}. '
+                    f'Check the ticker format e.g. GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS',
+                    'danger'
+                )
+        else:
+            # Try Yahoo Finance
+            data = get_stock_data(query)
+            if data:
+                results.append(data)
+            else:
+                flash(
+                    f'No results for "{query}". '
+                    f'For West African stocks use: GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS',
+                    'warning'
+                )
+
+    return render_template(
+        'search.html',
+        results=results,
+        query=query,
+        exchange_hint=exchange_hint
+    )
 
 
 @app.route('/stock/<ticker>')
@@ -604,4 +637,6 @@ def logout():
 
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
