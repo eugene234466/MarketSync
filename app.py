@@ -1,16 +1,21 @@
 import os
+import logging
+from dotenv import load_dotenv
+
 import yfinance as yf
 import feedparser
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from groq import Groq
-from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
+
 from models import db, bcrypt, login_manager, User, Portfolio, Alert
 
 load_dotenv()
+
+# ========================= APP SETUP =========================
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_123')
@@ -22,11 +27,15 @@ bcrypt.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-with app.app_context():
-    db.create_all()
-
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
+# ========================= LOGGING =========================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
 
@@ -42,6 +51,7 @@ AFRICAN_EXCHANGES = {
     'NGX': 'Nigerian Exchange (NGN)',
     'BRVM': 'BRVM West Africa (XOF)'
 }
+
 
 def get_gse_stock(ticker):
     """Fetch GSE stock from free dev.kwayisi.org API"""
@@ -533,4 +543,7 @@ def logout():
 
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    logger.info("MarketSync started successfully")
     app.run(debug=True)
