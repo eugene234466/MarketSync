@@ -95,7 +95,7 @@ def get_gse_stock(ticker):
 
     try:
         url = f"https://dev.kwayisi.org/apis/gse/equities/{ticker}"
-        res = requests.get(url, headers=HEADERS, timeout=6)
+        res = requests.get(url, headers=HEADERS, timeout=2)
         if res.status_code != 200:
             return None
         data = res.json()
