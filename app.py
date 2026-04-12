@@ -3,6 +3,8 @@ import yfinance as yf
 import feedparser
 import requests
 from bs4 import BeautifulSoup
+from functools import lru_cache
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from groq import Groq
@@ -47,8 +49,27 @@ HEADERS = {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
         'AppleWebKit/537.36 (KHTML, like Gecko) '
         'Chrome/120.0.0.0 Safari/537.36'
-    )
+    ),
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Connection': 'keep-alive',
 }
+
+# Simple in-memory cache — stores {ticker: (data, timestamp)}
+_african_cache = {}
+CACHE_TTL = timedelta(minutes=15)
+
+def _get_cached(ticker):
+    """Return cached data if still fresh."""
+    if ticker in _african_cache:
+        data, ts = _african_cache[ticker]
+        if datetime.now() - ts < CACHE_TTL:
+            return data
+    return None
+
+def _set_cached(ticker, data):
+    """Store data in cache with current timestamp."""
+    _african_cache[ticker] = (data, datetime.now())
 
 
 def _parse_number(text):
@@ -62,26 +83,28 @@ def _parse_number(text):
 def get_gse_stock(ticker):
     """
     Fetch GSE stock via dev.kwayisi.org free JSON API.
-    API returns: { name, price, change, volume, ... }
-    change field is already the % change value.
+    Uses 15-minute cache to avoid repeated slow calls.
     """
+    ticker = ticker.upper()
+    cache_key = f"GSE:{ticker}"
+
+    # Return cached result if fresh
+    cached = _get_cached(cache_key)
+    if cached:
+        return cached
+
     try:
-        ticker = ticker.upper()
-        # Try individual equity endpoint
         url = f"https://dev.kwayisi.org/apis/gse/equities/{ticker}"
-        res = requests.get(url, headers=HEADERS, timeout=12)
-        if res.status_code == 404:
-            return None
+        res = requests.get(url, headers=HEADERS, timeout=6)
         if res.status_code != 200:
             return None
         data = res.json()
         price = _parse_number(data.get('price', 0)) or 0
-        # API returns 'change' as percent change
         change_pct = _parse_number(data.get('change', 0)) or 0
         change = round(price * change_pct / 100, 4)
         prev = round(price - change, 4) if change else price
-        return {
-            'symbol': f"GSE:{ticker}",
+        result = {
+            'symbol': cache_key,
             'name': data.get('name', ticker),
             'price': round(price, 4),
             'prev_close': round(prev, 4),
@@ -96,6 +119,11 @@ def get_gse_stock(ticker):
             'currency': 'GHS',
             'exchange': 'Ghana Stock Exchange'
         }
+        _set_cached(cache_key, result)
+        return result
+    except requests.Timeout:
+        print(f"[GSE] Timeout fetching {ticker}")
+        return None
     except Exception as e:
         print(f"[GSE] Error fetching {ticker}: {e}")
         return None
@@ -119,8 +147,14 @@ def get_gse_all():
 def get_african_stock_afx(ticker, exchange):
     """
     Scrape NGX or BRVM stock data from afx.kwayisi.org.
-    Page structure: table with rows of label/value pairs.
+    Uses 15-minute cache to avoid repeated slow scrape calls.
     """
+    cache_key = f"{exchange.upper()}:{ticker.upper()}"
+
+    cached = _get_cached(cache_key)
+    if cached:
+        return cached
+
     try:
         ex_slug = {'NGX': 'ngx', 'BRVM': 'brvm'}.get(exchange.upper())
         if not ex_slug:
@@ -128,14 +162,14 @@ def get_african_stock_afx(ticker, exchange):
 
         ticker_lower = ticker.lower()
         url = f"https://afx.kwayisi.org/{ex_slug}/{ticker_lower}.html"
-        res = requests.get(url, headers=HEADERS, timeout=12)
+        res = requests.get(url, headers=HEADERS, timeout=6)
         if res.status_code != 200:
             print(f"[AFX] {url} returned {res.status_code}")
             return None
 
         soup = BeautifulSoup(res.text, 'html.parser')
 
-        # ── Extract company name from <h2> or <title> ──
+        # Extract company name
         name = ticker.upper()
         h2 = soup.find('h2')
         if h2:
@@ -143,25 +177,22 @@ def get_african_stock_afx(ticker, exchange):
         elif soup.title:
             name = soup.title.text.strip().split('|')[0].strip()
 
-        # ── Extract price and change from the data table ──
-        # AFX uses a <table> with rows: label | value
+        # Extract price and change from tables
         price = None
         change_pct = None
 
-        tables = soup.find_all('table')
-        for table in tables:
-            rows = table.find_all('tr')
-            for row in rows:
+        for table in soup.find_all('table'):
+            for row in table.find_all('tr'):
                 cells = row.find_all('td')
                 if len(cells) >= 2:
                     label = cells[0].text.strip().lower()
                     value = cells[1].text.strip()
-                    if 'price' in label or 'last' in label or 'close' in label:
+                    if any(k in label for k in ['price', 'last', 'close']):
                         price = _parse_number(value)
                     if 'change' in label and '%' in value:
                         change_pct = _parse_number(value.replace('%', ''))
 
-        # Fallback: look for price in any <strong> or <b> tag
+        # Fallback to first large number found
         if price is None:
             for tag in soup.find_all(['strong', 'b', 'span']):
                 val = _parse_number(tag.text)
@@ -179,8 +210,8 @@ def get_african_stock_afx(ticker, exchange):
         currency = 'NGN' if exchange == 'NGX' else 'XOF'
         exchange_name = 'Nigerian Exchange' if exchange == 'NGX' else 'BRVM West Africa'
 
-        return {
-            'symbol': f"{exchange.upper()}:{ticker.upper()}",
+        result = {
+            'symbol': cache_key,
             'name': name,
             'price': round(price, 4),
             'prev_close': round(prev, 4),
@@ -195,6 +226,12 @@ def get_african_stock_afx(ticker, exchange):
             'currency': currency,
             'exchange': exchange_name
         }
+        _set_cached(cache_key, result)
+        return result
+
+    except requests.Timeout:
+        print(f"[AFX] Timeout fetching {ticker} on {exchange}")
+        return None
     except Exception as e:
         print(f"[AFX] Error fetching {ticker} on {exchange}: {e}")
         return None
