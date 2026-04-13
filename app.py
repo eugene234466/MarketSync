@@ -3,7 +3,6 @@ import yfinance as yf
 import feedparser
 import requests
 from bs4 import BeautifulSoup
-from functools import lru_cache
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
@@ -127,21 +126,6 @@ def get_gse_stock(ticker):
     except Exception as e:
         print(f"[GSE] Error fetching {ticker}: {e}")
         return None
-
-
-def get_gse_all():
-    """Fetch all live GSE stocks — used for search."""
-    try:
-        res = requests.get(
-            "https://dev.kwayisi.org/apis/gse/live",
-            headers=HEADERS, timeout=12
-        )
-        if res.status_code != 200:
-            return []
-        return res.json()  # list of {name, price, change, volume}
-    except Exception as e:
-        print(f"[GSE] Error fetching all: {e}")
-        return []
 
 
 def get_african_stock_afx(ticker, exchange):
@@ -373,9 +357,10 @@ def get_news(ticker):
 
 def get_ai_analysis(ticker, name, price, change_pct):
     try:
+        currency = 'GHS' if ticker.startswith('GSE:') else                    'NGN' if ticker.startswith('NGX:') else                    'XOF' if ticker.startswith('BRVM:') else 'USD'
         prompt = (
             f"You are a financial analyst. Give a brief analysis of {name} ({ticker}). "
-            f"Current price: ${price}. Change today: {change_pct:.2f}%. "
+            f"Current price: {currency} {price}. Change today: {change_pct:.2f}%. "
             f"Cover: current trend, key factors affecting price, and short-term outlook. "
             f"Keep it concise, clear and under 150 words."
         )
@@ -405,8 +390,8 @@ def check_alerts():
             active_alerts = Alert.query.filter_by(active=True).all()
             for alert in active_alerts:
                 try:
-                    info = yf.Ticker(alert.ticker).info
-                    current_p = info.get('currentPrice') or info.get('regularMarketPrice')
+                    stock_info = get_stock_data(alert.ticker)
+                    current_p = stock_info['price'] if stock_info else None
                     if not current_p:
                         continue
                     triggered = (
@@ -547,8 +532,9 @@ def portfolio():
 
     for entry in entries:
         try:
-            info = yf.Ticker(entry.ticker).info
-            current_price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
+            # Use get_stock_data to handle both yfinance and African tickers
+            stock_info = get_stock_data(entry.ticker)
+            current_price = stock_info['price'] if stock_info else 0
             current_value = round(current_price * entry.shares, 2)
             cost_basis = round(entry.buy_price * entry.shares, 2)
             gain_loss = round(current_value - cost_basis, 2)
@@ -689,6 +675,14 @@ def register():
             flash('Username already taken.', 'danger')
             return render_template('register.html')
 
+        confirm = request.form.get('confirm_password', '')
+        if password != confirm:
+            flash('Passwords do not match.', 'danger')
+            return render_template('register.html')
+        if len(password) < 6:
+            flash('Password must be at least 6 characters.', 'danger')
+            return render_template('register.html')
+
         new_user = User(username=username, email=email)
         new_user.set_password(password)
         db.session.add(new_user)
@@ -726,4 +720,4 @@ def logout():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
