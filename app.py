@@ -95,7 +95,7 @@ def get_gse_stock(ticker):
 
     try:
         url = f"https://dev.kwayisi.org/apis/gse/equities/{ticker}"
-        res = requests.get(url, headers=HEADERS, timeout=2)
+        res = requests.get(url, headers=HEADERS, timeout=6)
         if res.status_code != 200:
             return None
         data = res.json()
@@ -257,41 +257,81 @@ def get_african_stock(ticker_str):
         return None
 
 
-def get_stock_data(ticker):
-    # ── Try African exchange prefix first (GSE:, NGX:, BRVM:) ──
-    if ':' in ticker:
-        african_data = get_african_stock(ticker)
-        if african_data:
-            return african_data
-        return None
+# Common index aliases — users type IXIC, we convert to ^IXIC
+INDEX_ALIASES = {
+    'IXIC': '^IXIC',
+    'GSPC': '^GSPC',
+    'DJI':  '^DJI',
+    'FTSE': '^FTSE',
+    'N225': '^N225',
+    'HSI':  '^HSI',
+    'GDAXI': '^GDAXI',
+    'VIX':  '^VIX',
+    'TNX':  '^TNX',
+    'RUT':  '^RUT',
+}
 
-    # ── Try Yahoo Finance ──
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        if not info or not info.get('currentPrice') and not info.get('regularMarketPrice'):
+def get_stock_data(ticker):
+    ticker = ticker.strip().upper()
+
+    # ── African exchange prefix (GSE:, NGX:, BRVM:) ──
+    if ':' in ticker:
+        # Could be African exchange OR crypto like BTC-USD which yfinance handles
+        # Only route to African if it's a known exchange prefix
+        prefix = ticker.split(':')[0]
+        if prefix in AFRICAN_EXCHANGES:
+            african_data = get_african_stock(ticker)
+            if african_data:
+                return african_data
             return None
-        price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
-        prev_close = info.get('previousClose') or info.get('regularMarketPreviousClose', 0)
+        # Otherwise fall through to yfinance (handles BTC-USD etc via hyphen)
+
+    # ── Auto-add ^ for known indices ──
+    yf_ticker = INDEX_ALIASES.get(ticker, ticker)
+
+    # ── Yahoo Finance ──
+    try:
+        stock = yf.Ticker(yf_ticker)
+        info = stock.info
+        if not info:
+            return None
+
+        # Try multiple price fields — indices use regularMarketPrice
+        price = (
+            info.get('currentPrice') or
+            info.get('regularMarketPrice') or
+            info.get('previousClose') or
+            info.get('navPrice')
+        )
+        if not price:
+            return None
+
+        prev_close = (
+            info.get('previousClose') or
+            info.get('regularMarketPreviousClose') or
+            price
+        )
         change = price - prev_close
         change_percent = (change / prev_close * 100) if prev_close else 0
+
         return {
-            'symbol': ticker.upper(),
-            'name': info.get('longName') or info.get('shortName', ticker),
-            'price': round(price, 2),
-            'prev_close': round(prev_close, 2),
-            'change': round(change, 2),
+            'symbol': yf_ticker.upper(),
+            'name': info.get('longName') or info.get('shortName') or yf_ticker,
+            'price': round(price, 4),
+            'prev_close': round(prev_close, 4),
+            'change': round(change, 4),
             'change_percent': round(change_percent, 2),
-            'volume': info.get('volume'),
+            'volume': info.get('volume') or info.get('regularMarketVolume'),
             'market_cap': info.get('marketCap'),
             'high_52': info.get('fiftyTwoWeekHigh'),
             'low_52': info.get('fiftyTwoWeekLow'),
             'pe_ratio': info.get('trailingPE'),
             'dividend': info.get('dividendYield'),
-            'currency': 'USD',
-            'exchange': info.get('exchange', 'Yahoo Finance')
+            'currency': info.get('currency', 'USD'),
+            'exchange': info.get('fullExchangeName') or info.get('exchange', 'Yahoo Finance')
         }
-    except Exception:
+    except Exception as e:
+        print(f"[YF] Error fetching {yf_ticker}: {e}")
         return None
 
 
@@ -393,22 +433,42 @@ scheduler.start()
 
 @app.route('/')
 def index():
-    indices_symbols = ['^GSPC', '^IXIC', '^DJI', 'BTC-USD', 'ETH-USD']
+    indices_symbols = [
+        ('^GSPC',   'S&P 500'),
+        ('^IXIC',   'NASDAQ'),
+        ('^DJI',    'DOW JONES'),
+        ('BTC-USD', 'Bitcoin'),
+        ('ETH-USD', 'Ethereum'),
+    ]
     indices_data = []
-    for symbol in indices_symbols:
+    for symbol, fallback_name in indices_symbols:
         try:
             info = yf.Ticker(symbol).info
-            price = info.get('currentPrice') or info.get('regularMarketPrice')
-            prev = info.get('previousClose') or info.get('regularMarketPreviousClose', 0)
-            change_pct = round(((price - prev) / prev * 100), 2) if prev else 0
+            price = (
+                info.get('currentPrice') or
+                info.get('regularMarketPrice') or
+                info.get('previousClose')
+            )
+            prev = (
+                info.get('previousClose') or
+                info.get('regularMarketPreviousClose') or
+                price
+            )
+            change_pct = round(((price - prev) / prev * 100), 2) if prev and price else 0
             indices_data.append({
                 'symbol': symbol,
-                'name': info.get('shortName', symbol),
+                'name': info.get('shortName') or fallback_name,
                 'price': round(price, 2) if price else 'N/A',
                 'change_percent': change_pct
             })
-        except Exception:
-            continue
+        except Exception as e:
+            print(f"[Index] Error fetching {symbol}: {e}")
+            indices_data.append({
+                'symbol': symbol,
+                'name': fallback_name,
+                'price': 'N/A',
+                'change_percent': 0
+            })
     return render_template('index.html', indices=indices_data)
 
 
@@ -416,39 +476,28 @@ def index():
 def search():
     query = request.args.get('q', '').strip().upper()
     results = []
-    exchange_hint = None
 
     if query:
-        # Detect African exchange prefix
-        if ':' in query:
-            exchange_hint = query.split(':')[0]
-            data = get_stock_data(query)
-            if data:
-                results.append(data)
-            else:
+        data = get_stock_data(query)
+        if data:
+            results.append(data)
+        else:
+            # Give helpful hint based on what they typed
+            if ':' in query and query.split(':')[0] in AFRICAN_EXCHANGES:
                 flash(
                     f'Could not find {query}. '
-                    f'Check the ticker format e.g. GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS',
+                    f'Check the ticker — e.g. GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS',
                     'danger'
                 )
-        else:
-            # Try Yahoo Finance
-            data = get_stock_data(query)
-            if data:
-                results.append(data)
             else:
                 flash(
                     f'No results for "{query}". '
-                    f'For West African stocks use: GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS',
+                    f'Try: AAPL, TSLA, BTC-USD. '
+                    f'For West Africa use: GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS',
                     'warning'
                 )
 
-    return render_template(
-        'search.html',
-        results=results,
-        query=query,
-        exchange_hint=exchange_hint
-    )
+    return render_template('search.html', results=results, query=query)
 
 
 @app.route('/stock/<ticker>')
