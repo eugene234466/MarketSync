@@ -14,13 +14,32 @@
     <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}">
 
     <!-- PWA -->
+   <!-- PWA (Improved for Mobile) -->
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-    <meta name="theme-color" content="#00ff88">
+    
+    <!-- Theme Colors -->
+    <meta name="theme-color" content="#0d0f1a">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- iOS Support -->
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MarketSync">
-    <meta name="description" content="Track Stocks and Create Alerts and portfolios">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/logo.png') }}">
-    <meta name="app-mobile-web-app-status bar-style" content="black-translucent">
+    
+    <!-- App Icons (iOS requires multiple sizes) -->
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='images/logo.png') }}">
+    <link rel="apple-touch-icon" sizes="152x152" href="{{ url_for('static', filename='images/logo.png') }}">
+    <link rel="apple-touch-icon" sizes="120x120" href="{{ url_for('static', filename='images/logo.png') }}">
+    
+    <!-- Splash Screens (Optional but makes it feel native on iOS) -->
+    <link rel="apple-touch-startup-image" href="{{ url_for('static', filename='images/logo.png') }}">
+    
+    <!-- Description -->
+    <meta name="description" content="Track stocks, crypto, portfolios and alerts in real time.">
+    
+    <!-- Windows / Android -->
+    <meta name="msapplication-TileColor" content="#0d0f1a">
+    <meta name="msapplication-TileImage" content="{{ url_for('static', filename='images/logo.png') }}">
 </head>
 <body>
 
