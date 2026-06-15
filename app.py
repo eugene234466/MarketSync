@@ -13,7 +13,7 @@ from models import db, bcrypt, login_manager, User, Portfolio, Alert
 
 load_dotenv()
 
-app = Flask(__name__, instance_path="/tmp")
+app = Flask(__name__, instance_path="/tmp", instance_relative_config=True)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_123')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///marketsync.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -23,8 +23,9 @@ bcrypt.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-with app.app_context():
-    db.create_all()
+if os.getenv("VERCEL") != "1":
+    with app.app_context():
+        db.create_all()
 
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
