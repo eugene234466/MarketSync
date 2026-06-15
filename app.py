@@ -13,7 +13,7 @@ from models import db, bcrypt, login_manager, User, Portfolio, Alert
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, instance_path="/tmp")
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_123')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///marketsync.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
