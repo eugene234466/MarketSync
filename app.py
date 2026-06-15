@@ -23,9 +23,9 @@ bcrypt.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-if os.getenv("VERCEL") != "1":
-    with app.app_context():
-        db.create_all()
+
+with app.app_context():
+    db.create_all()
 
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
