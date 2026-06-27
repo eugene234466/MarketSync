@@ -9,20 +9,18 @@ from flask_login import login_user, logout_user, login_required, current_user
 from groq import Groq
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
-from models import db, bcrypt, login_manager, User, Portfolio, Alert
+from models import db, bcrypt, login_manager, init_db, User, Portfolio, Alert
 
 load_dotenv()
 
-app = Flask(__name__, instance_path="/tmp", instance_relative_config=True)
+app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_123')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///marketsync.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db.init_app(app)
+init_db(app)
 bcrypt.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
-
 
 with app.app_context():
     db.create_all()
@@ -88,7 +86,6 @@ def get_gse_stock(ticker):
     ticker = ticker.upper()
     cache_key = f"GSE:{ticker}"
 
-    # Return cached result if fresh
     cached = _get_cached(cache_key)
     if cached:
         return cached
@@ -154,7 +151,6 @@ def get_african_stock_afx(ticker, exchange):
 
         soup = BeautifulSoup(res.text, 'html.parser')
 
-        # Extract company name
         name = ticker.upper()
         h2 = soup.find('h2')
         if h2:
@@ -162,7 +158,6 @@ def get_african_stock_afx(ticker, exchange):
         elif soup.title:
             name = soup.title.text.strip().split('|')[0].strip()
 
-        # Extract price and change from tables
         price = None
         change_pct = None
 
@@ -177,7 +172,6 @@ def get_african_stock_afx(ticker, exchange):
                     if 'change' in label and '%' in value:
                         change_pct = _parse_number(value.replace('%', ''))
 
-        # Fallback to first large number found
         if price is None:
             for tag in soup.find_all(['strong', 'b', 'span']):
                 val = _parse_number(tag.text)
@@ -242,7 +236,6 @@ def get_african_stock(ticker_str):
         return None
 
 
-# Common index aliases — users type IXIC, we convert to ^IXIC
 INDEX_ALIASES = {
     'IXIC': '^IXIC',
     'GSPC': '^GSPC',
@@ -259,29 +252,22 @@ INDEX_ALIASES = {
 def get_stock_data(ticker):
     ticker = ticker.strip().upper()
 
-    # ── African exchange prefix (GSE:, NGX:, BRVM:) ──
     if ':' in ticker:
-        # Could be African exchange OR crypto like BTC-USD which yfinance handles
-        # Only route to African if it's a known exchange prefix
         prefix = ticker.split(':')[0]
         if prefix in AFRICAN_EXCHANGES:
             african_data = get_african_stock(ticker)
             if african_data:
                 return african_data
             return None
-        # Otherwise fall through to yfinance (handles BTC-USD etc via hyphen)
 
-    # ── Auto-add ^ for known indices ──
     yf_ticker = INDEX_ALIASES.get(ticker, ticker)
 
-    # ── Yahoo Finance ──
     try:
         stock = yf.Ticker(yf_ticker)
         info = stock.info
         if not info:
             return None
 
-        # Try multiple price fields — indices use regularMarketPrice
         price = (
             info.get('currentPrice') or
             info.get('regularMarketPrice') or
@@ -321,7 +307,6 @@ def get_stock_data(ticker):
 
 
 def get_stock_history(ticker, period='1mo'):
-    # African exchange tickers have no Yahoo Finance history
     if ':' in ticker:
         return [], []
     try:
@@ -337,7 +322,6 @@ def get_stock_history(ticker, period='1mo'):
 
 def get_news(ticker):
     try:
-        # For African tickers, use company name as search query
         if ':' in ticker:
             search_term = ticker.split(':')[1]
         else:
@@ -358,7 +342,12 @@ def get_news(ticker):
 
 def get_ai_analysis(ticker, name, price, change_pct):
     try:
-        currency = 'GHS' if ticker.startswith('GSE:') else                    'NGN' if ticker.startswith('NGX:') else                    'XOF' if ticker.startswith('BRVM:') else 'USD'
+        currency = (
+            'GHS' if ticker.startswith('GSE:') else
+            'NGN' if ticker.startswith('NGX:') else
+            'XOF' if ticker.startswith('BRVM:') else
+            'USD'
+        )
         prompt = (
             f"You are a financial analyst. Give a brief analysis of {name} ({ticker}). "
             f"Current price: {currency} {price}. Change today: {change_pct:.2f}%. "
@@ -468,7 +457,6 @@ def search():
         if data:
             results.append(data)
         else:
-            # Give helpful hint based on what they typed
             if ':' in query and query.split(':')[0] in AFRICAN_EXCHANGES:
                 flash(
                     f'Could not find {query}. '
@@ -533,7 +521,6 @@ def portfolio():
 
     for entry in entries:
         try:
-            # Use get_stock_data to handle both yfinance and African tickers
             stock_info = get_stock_data(entry.ticker)
             current_price = stock_info['price'] if stock_info else 0
             current_value = round(current_price * entry.shares, 2)
