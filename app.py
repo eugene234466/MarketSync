@@ -3,6 +3,7 @@ import yfinance as yf
 import feedparser
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
@@ -28,9 +29,32 @@ with app.app_context():
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
 
-# ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
+# ── YFINANCE SESSION ──────────────────────────────────────────────────────────
+
+def _make_yf_session():
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/120.0.0.0 Safari/537.36'
+        ),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://finance.yahoo.com/',
+        'DNT': '1',
+    })
+    adapter = HTTPAdapter(max_retries=2)
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
+    return session
+
+_yf_session = _make_yf_session()
+
 
 # ── AFRICAN STOCK FUNCTIONS ───────────────────────────────────────────────────
+
 AFRICAN_EXCHANGES = {
     'GSE':  'Ghana Stock Exchange (GHS)',
     'NGX':  'Nigerian Exchange (NGN)',
@@ -54,7 +78,6 @@ AFRICAN_CACHE_TTL = timedelta(minutes=15)
 YF_CACHE_TTL      = timedelta(minutes=5)
 
 def _get_cached(key, ttl):
-    """Return cached data if still within TTL."""
     if key in _cache:
         data, ts = _cache[key]
         if datetime.now() - ts < ttl:
@@ -62,7 +85,6 @@ def _get_cached(key, ttl):
     return None
 
 def _set_cached(key, data):
-    """Store data in cache with current timestamp."""
     _cache[key] = (data, datetime.now())
 
 
@@ -236,7 +258,6 @@ INDEX_ALIASES = {
 def get_stock_data(ticker):
     ticker = ticker.strip().upper()
 
-    # African exchange routing
     if ':' in ticker:
         prefix = ticker.split(':')[0]
         if prefix in AFRICAN_EXCHANGES:
@@ -245,7 +266,6 @@ def get_stock_data(ticker):
                 return african_data
             return None
 
-    # Check cache before hitting Yahoo
     cache_key = f"YF:{ticker}"
     cached = _get_cached(cache_key, YF_CACHE_TTL)
     if cached:
@@ -254,7 +274,7 @@ def get_stock_data(ticker):
     yf_ticker = INDEX_ALIASES.get(ticker, ticker)
 
     try:
-        stock = yf.Ticker(yf_ticker)
+        stock = yf.Ticker(yf_ticker, session=_yf_session)
         info = stock.info
         if not info:
             return None
@@ -304,7 +324,13 @@ def get_stock_history(ticker, period='1mo'):
     if ':' in ticker:
         return [], []
     try:
-        df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
+        df = yf.download(
+            ticker,
+            period=period,
+            auto_adjust=True,
+            progress=False,
+            session=_yf_session
+        )
         if df.empty:
             return [], []
         dates = df.index.strftime('%Y-%m-%d').tolist()
@@ -420,7 +446,7 @@ def index():
             continue
 
         try:
-            info = yf.Ticker(symbol).info
+            info = yf.Ticker(symbol, session=_yf_session).info
             price = (
                 info.get('currentPrice') or
                 info.get('regularMarketPrice') or
