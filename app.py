@@ -3,7 +3,6 @@ import yfinance as yf
 import feedparser
 import requests
 from bs4 import BeautifulSoup
-from requests.adapters import HTTPAdapter
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
@@ -29,31 +28,13 @@ with app.app_context():
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
 
-# ── YFINANCE SESSION ──────────────────────────────────────────────────────────
-
-def _make_yf_session():
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': (
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-            'AppleWebKit/537.36 (KHTML, like Gecko) '
-            'Chrome/120.0.0.0 Safari/537.36'
-        ),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://finance.yahoo.com/',
-        'DNT': '1',
-    })
-    adapter = HTTPAdapter(max_retries=2)
-    session.mount('https://', adapter)
-    session.mount('http://', adapter)
-    return session
-
-_yf_session = _make_yf_session()
-
+# ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
 
 # ── AFRICAN STOCK FUNCTIONS ───────────────────────────────────────────────────
+# Supported prefixes:
+#   GSE:MTNGH    → Ghana Stock Exchange  (dev.kwayisi.org JSON API)
+#   NGX:DANGCEM  → Nigerian Exchange     (afx.kwayisi.org scraper)
+#   BRVM:SNTS    → BRVM West Africa      (afx.kwayisi.org scraper)
 
 AFRICAN_EXCHANGES = {
     'GSE':  'Ghana Stock Exchange (GHS)',
@@ -72,23 +53,25 @@ HEADERS = {
     'Connection': 'keep-alive',
 }
 
-# Unified in-memory cache — stores {key: (data, timestamp)}
-_cache = {}
-AFRICAN_CACHE_TTL = timedelta(minutes=15)
-YF_CACHE_TTL      = timedelta(minutes=5)
+# Simple in-memory cache — stores {ticker: (data, timestamp)}
+_african_cache = {}
+CACHE_TTL = timedelta(minutes=15)
 
-def _get_cached(key, ttl):
-    if key in _cache:
-        data, ts = _cache[key]
-        if datetime.now() - ts < ttl:
+def _get_cached(ticker):
+    """Return cached data if still fresh."""
+    if ticker in _african_cache:
+        data, ts = _african_cache[ticker]
+        if datetime.now() - ts < CACHE_TTL:
             return data
     return None
 
-def _set_cached(key, data):
-    _cache[key] = (data, datetime.now())
+def _set_cached(ticker, data):
+    """Store data in cache with current timestamp."""
+    _african_cache[ticker] = (data, datetime.now())
 
 
 def _parse_number(text):
+    """Safely parse a number string — strips commas, spaces."""
     try:
         return float(str(text).replace(',', '').replace(' ', '').strip())
     except Exception:
@@ -96,10 +79,14 @@ def _parse_number(text):
 
 
 def get_gse_stock(ticker):
+    """
+    Fetch GSE stock via dev.kwayisi.org free JSON API.
+    Uses 15-minute cache to avoid repeated slow calls.
+    """
     ticker = ticker.upper()
     cache_key = f"GSE:{ticker}"
 
-    cached = _get_cached(cache_key, AFRICAN_CACHE_TTL)
+    cached = _get_cached(cache_key)
     if cached:
         return cached
 
@@ -140,9 +127,13 @@ def get_gse_stock(ticker):
 
 
 def get_african_stock_afx(ticker, exchange):
+    """
+    Scrape NGX or BRVM stock data from afx.kwayisi.org.
+    Uses 15-minute cache to avoid repeated slow scrape calls.
+    """
     cache_key = f"{exchange.upper()}:{ticker.upper()}"
 
-    cached = _get_cached(cache_key, AFRICAN_CACHE_TTL)
+    cached = _get_cached(cache_key)
     if cached:
         return cached
 
@@ -226,6 +217,10 @@ def get_african_stock_afx(ticker, exchange):
 
 
 def get_african_stock(ticker_str):
+    """
+    Route African ticker to the correct data source.
+    Format: EXCHANGE:TICKER  e.g. GSE:MTNGH
+    """
     try:
         if ':' not in ticker_str:
             return None
@@ -242,18 +237,17 @@ def get_african_stock(ticker_str):
 
 
 INDEX_ALIASES = {
-    'IXIC':  '^IXIC',
-    'GSPC':  '^GSPC',
-    'DJI':   '^DJI',
-    'FTSE':  '^FTSE',
-    'N225':  '^N225',
-    'HSI':   '^HSI',
+    'IXIC': '^IXIC',
+    'GSPC': '^GSPC',
+    'DJI':  '^DJI',
+    'FTSE': '^FTSE',
+    'N225': '^N225',
+    'HSI':  '^HSI',
     'GDAXI': '^GDAXI',
-    'VIX':   '^VIX',
-    'TNX':   '^TNX',
-    'RUT':   '^RUT',
+    'VIX':  '^VIX',
+    'TNX':  '^TNX',
+    'RUT':  '^RUT',
 }
-
 
 def get_stock_data(ticker):
     ticker = ticker.strip().upper()
@@ -266,15 +260,10 @@ def get_stock_data(ticker):
                 return african_data
             return None
 
-    cache_key = f"YF:{ticker}"
-    cached = _get_cached(cache_key, YF_CACHE_TTL)
-    if cached:
-        return cached
-
     yf_ticker = INDEX_ALIASES.get(ticker, ticker)
 
     try:
-        stock = yf.Ticker(yf_ticker, session=_yf_session)
+        stock = yf.Ticker(yf_ticker)
         info = stock.info
         if not info:
             return None
@@ -296,7 +285,7 @@ def get_stock_data(ticker):
         change = price - prev_close
         change_percent = (change / prev_close * 100) if prev_close else 0
 
-        result = {
+        return {
             'symbol': yf_ticker.upper(),
             'name': info.get('longName') or info.get('shortName') or yf_ticker,
             'price': round(price, 4),
@@ -312,9 +301,6 @@ def get_stock_data(ticker):
             'currency': info.get('currency', 'USD'),
             'exchange': info.get('fullExchangeName') or info.get('exchange', 'Yahoo Finance')
         }
-        _set_cached(cache_key, result)
-        return result
-
     except Exception as e:
         print(f"[YF] Error fetching {yf_ticker}: {e}")
         return None
@@ -324,13 +310,7 @@ def get_stock_history(ticker, period='1mo'):
     if ':' in ticker:
         return [], []
     try:
-        df = yf.download(
-            ticker,
-            period=period,
-            auto_adjust=True,
-            progress=False,
-            session=_yf_session
-        )
+        df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
         if df.empty:
             return [], []
         dates = df.index.strftime('%Y-%m-%d').tolist()
@@ -436,17 +416,9 @@ def index():
         ('ETH-USD', 'Ethereum'),
     ]
     indices_data = []
-
     for symbol, fallback_name in indices_symbols:
-        cache_key = f"YF:INDEX:{symbol}"
-
-        cached = _get_cached(cache_key, YF_CACHE_TTL)
-        if cached:
-            indices_data.append(cached)
-            continue
-
         try:
-            info = yf.Ticker(symbol, session=_yf_session).info
+            info = yf.Ticker(symbol).info
             price = (
                 info.get('currentPrice') or
                 info.get('regularMarketPrice') or
@@ -458,14 +430,12 @@ def index():
                 price
             )
             change_pct = round(((price - prev) / prev * 100), 2) if prev and price else 0
-            entry = {
+            indices_data.append({
                 'symbol': symbol,
                 'name': info.get('shortName') or fallback_name,
                 'price': round(price, 2) if price else 'N/A',
                 'change_percent': change_pct
-            }
-            _set_cached(cache_key, entry)
-            indices_data.append(entry)
+            })
         except Exception as e:
             print(f"[Index] Error fetching {symbol}: {e}")
             indices_data.append({
@@ -474,7 +444,6 @@ def index():
                 'price': 'N/A',
                 'change_percent': 0
             })
-
     return render_template('index.html', indices=indices_data)
 
 
@@ -740,3 +709,4 @@ def logout():
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader=False)
+    
