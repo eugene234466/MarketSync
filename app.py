@@ -2,8 +2,7 @@ import os
 import yfinance as yf
 import feedparser
 import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from requests.adapters import HTTPAdapter
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_user, logout_user, login_required, current_user
 from groq import Groq
@@ -22,295 +21,72 @@ bcrypt.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-with app.app_context():
-    db.create_all()
-
 groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+
+
+# ── YFINANCE SESSION ──────────────────────────────────────────────────────────
+
+def _make_yf_session():
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/120.0.0.0 Safari/537.36'
+        ),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://finance.yahoo.com/',
+        'DNT': '1',
+    })
+    adapter = HTTPAdapter(max_retries=2)
+    session.mount('https://', adapter)
+    session.mount('http://', adapter)
+    return session
+
+_yf_session = _make_yf_session()
 
 
 # ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
 
-# ── AFRICAN STOCK FUNCTIONS ───────────────────────────────────────────────────
-# Supported prefixes:
-#   GSE:MTNGH    → Ghana Stock Exchange  (dev.kwayisi.org JSON API)
-#   NGX:DANGCEM  → Nigerian Exchange     (afx.kwayisi.org scraper)
-#   BRVM:SNTS    → BRVM West Africa      (afx.kwayisi.org scraper)
-
-AFRICAN_EXCHANGES = {
-    'GSE':  'Ghana Stock Exchange (GHS)',
-    'NGX':  'Nigerian Exchange (NGN)',
-    'BRVM': 'BRVM West Africa (XOF)'
-}
-
-HEADERS = {
-    'User-Agent': (
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) '
-        'Chrome/120.0.0.0 Safari/537.36'
-    ),
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Connection': 'keep-alive',
-}
-
-# Simple in-memory cache — stores {ticker: (data, timestamp)}
-_african_cache = {}
-CACHE_TTL = timedelta(minutes=15)
-
-def _get_cached(ticker):
-    """Return cached data if still fresh."""
-    if ticker in _african_cache:
-        data, ts = _african_cache[ticker]
-        if datetime.now() - ts < CACHE_TTL:
-            return data
-    return None
-
-def _set_cached(ticker, data):
-    """Store data in cache with current timestamp."""
-    _african_cache[ticker] = (data, datetime.now())
-
-
-def _parse_number(text):
-    """Safely parse a number string — strips commas, spaces."""
-    try:
-        return float(str(text).replace(',', '').replace(' ', '').strip())
-    except Exception:
-        return None
-
-
-def get_gse_stock(ticker):
-    """
-    Fetch GSE stock via dev.kwayisi.org free JSON API.
-    Uses 15-minute cache to avoid repeated slow calls.
-    """
-    ticker = ticker.upper()
-    cache_key = f"GSE:{ticker}"
-
-    cached = _get_cached(cache_key)
-    if cached:
-        return cached
-
-    try:
-        url = f"https://dev.kwayisi.org/apis/gse/equities/{ticker}"
-        res = requests.get(url, headers=HEADERS, timeout=6)
-        if res.status_code != 200:
-            return None
-        data = res.json()
-        price = _parse_number(data.get('price', 0)) or 0
-        change_pct = _parse_number(data.get('change', 0)) or 0
-        change = round(price * change_pct / 100, 4)
-        prev = round(price - change, 4) if change else price
-        result = {
-            'symbol': cache_key,
-            'name': data.get('name', ticker),
-            'price': round(price, 4),
-            'prev_close': round(prev, 4),
-            'change': round(change, 4),
-            'change_percent': round(change_pct, 2),
-            'volume': data.get('volume'),
-            'market_cap': None,
-            'high_52': None,
-            'low_52': None,
-            'pe_ratio': None,
-            'dividend': None,
-            'currency': 'GHS',
-            'exchange': 'Ghana Stock Exchange'
-        }
-        _set_cached(cache_key, result)
-        return result
-    except requests.Timeout:
-        print(f"[GSE] Timeout fetching {ticker}")
-        return None
-    except Exception as e:
-        print(f"[GSE] Error fetching {ticker}: {e}")
-        return None
-
-
-def get_african_stock_afx(ticker, exchange):
-    """
-    Scrape NGX or BRVM stock data from afx.kwayisi.org.
-    Uses 15-minute cache to avoid repeated slow scrape calls.
-    """
-    cache_key = f"{exchange.upper()}:{ticker.upper()}"
-
-    cached = _get_cached(cache_key)
-    if cached:
-        return cached
-
-    try:
-        ex_slug = {'NGX': 'ngx', 'BRVM': 'brvm'}.get(exchange.upper())
-        if not ex_slug:
-            return None
-
-        ticker_lower = ticker.lower()
-        url = f"https://afx.kwayisi.org/{ex_slug}/{ticker_lower}.html"
-        res = requests.get(url, headers=HEADERS, timeout=6)
-        if res.status_code != 200:
-            print(f"[AFX] {url} returned {res.status_code}")
-            return None
-
-        soup = BeautifulSoup(res.text, 'html.parser')
-
-        name = ticker.upper()
-        h2 = soup.find('h2')
-        if h2:
-            name = h2.text.strip().split('(')[0].strip()
-        elif soup.title:
-            name = soup.title.text.strip().split('|')[0].strip()
-
-        price = None
-        change_pct = None
-
-        for table in soup.find_all('table'):
-            for row in table.find_all('tr'):
-                cells = row.find_all('td')
-                if len(cells) >= 2:
-                    label = cells[0].text.strip().lower()
-                    value = cells[1].text.strip()
-                    if any(k in label for k in ['price', 'last', 'close']):
-                        price = _parse_number(value)
-                    if 'change' in label and '%' in value:
-                        change_pct = _parse_number(value.replace('%', ''))
-
-        if price is None:
-            for tag in soup.find_all(['strong', 'b', 'span']):
-                val = _parse_number(tag.text)
-                if val and val > 0.01:
-                    price = val
-                    break
-
-        if price is None:
-            print(f"[AFX] Could not find price for {ticker} on {exchange}")
-            return None
-
-        change_pct = change_pct or 0
-        change = round(price * change_pct / 100, 4)
-        prev = round(price - change, 4)
-        currency = 'NGN' if exchange == 'NGX' else 'XOF'
-        exchange_name = 'Nigerian Exchange' if exchange == 'NGX' else 'BRVM West Africa'
-
-        result = {
-            'symbol': cache_key,
-            'name': name,
-            'price': round(price, 4),
-            'prev_close': round(prev, 4),
-            'change': round(change, 4),
-            'change_percent': round(change_pct, 2),
-            'volume': None,
-            'market_cap': None,
-            'high_52': None,
-            'low_52': None,
-            'pe_ratio': None,
-            'dividend': None,
-            'currency': currency,
-            'exchange': exchange_name
-        }
-        _set_cached(cache_key, result)
-        return result
-
-    except requests.Timeout:
-        print(f"[AFX] Timeout fetching {ticker} on {exchange}")
-        return None
-    except Exception as e:
-        print(f"[AFX] Error fetching {ticker} on {exchange}: {e}")
-        return None
-
-
-def get_african_stock(ticker_str):
-    """
-    Route African ticker to the correct data source.
-    Format: EXCHANGE:TICKER  e.g. GSE:MTNGH
-    """
-    try:
-        if ':' not in ticker_str:
-            return None
-        parts = ticker_str.upper().split(':', 1)
-        exchange, ticker = parts[0], parts[1]
-        if exchange == 'GSE':
-            return get_gse_stock(ticker)
-        elif exchange in ['NGX', 'BRVM']:
-            return get_african_stock_afx(ticker, exchange)
-        return None
-    except Exception as e:
-        print(f"[African] Routing error: {e}")
-        return None
-
-
-INDEX_ALIASES = {
-    'IXIC': '^IXIC',
-    'GSPC': '^GSPC',
-    'DJI':  '^DJI',
-    'FTSE': '^FTSE',
-    'N225': '^N225',
-    'HSI':  '^HSI',
-    'GDAXI': '^GDAXI',
-    'VIX':  '^VIX',
-    'TNX':  '^TNX',
-    'RUT':  '^RUT',
-}
-
 def get_stock_data(ticker):
-    ticker = ticker.strip().upper()
-
-    if ':' in ticker:
-        prefix = ticker.split(':')[0]
-        if prefix in AFRICAN_EXCHANGES:
-            african_data = get_african_stock(ticker)
-            if african_data:
-                return african_data
-            return None
-
-    yf_ticker = INDEX_ALIASES.get(ticker, ticker)
-
     try:
-        stock = yf.Ticker(yf_ticker)
+        stock = yf.Ticker(ticker, session=_yf_session)
         info = stock.info
-        if not info:
+        if not info or not info.get('currentPrice') and not info.get('regularMarketPrice'):
             return None
-
-        price = (
-            info.get('currentPrice') or
-            info.get('regularMarketPrice') or
-            info.get('previousClose') or
-            info.get('navPrice')
-        )
-        if not price:
-            return None
-
-        prev_close = (
-            info.get('previousClose') or
-            info.get('regularMarketPreviousClose') or
-            price
-        )
+        price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
+        prev_close = info.get('previousClose') or info.get('regularMarketPreviousClose', 0)
         change = price - prev_close
         change_percent = (change / prev_close * 100) if prev_close else 0
-
         return {
-            'symbol': yf_ticker.upper(),
-            'name': info.get('longName') or info.get('shortName') or yf_ticker,
-            'price': round(price, 4),
-            'prev_close': round(prev_close, 4),
-            'change': round(change, 4),
+            'symbol': ticker.upper(),
+            'name': info.get('longName') or info.get('shortName', ticker),
+            'price': round(price, 2),
+            'prev_close': round(prev_close, 2),
+            'change': round(change, 2),
             'change_percent': round(change_percent, 2),
-            'volume': info.get('volume') or info.get('regularMarketVolume'),
+            'volume': info.get('volume'),
             'market_cap': info.get('marketCap'),
             'high_52': info.get('fiftyTwoWeekHigh'),
             'low_52': info.get('fiftyTwoWeekLow'),
             'pe_ratio': info.get('trailingPE'),
             'dividend': info.get('dividendYield'),
-            'currency': info.get('currency', 'USD'),
-            'exchange': info.get('fullExchangeName') or info.get('exchange', 'Yahoo Finance')
         }
-    except Exception as e:
-        print(f"[YF] Error fetching {yf_ticker}: {e}")
+    except Exception:
         return None
 
 
 def get_stock_history(ticker, period='1mo'):
-    if ':' in ticker:
-        return [], []
     try:
-        df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
+        df = yf.download(
+            ticker,
+            period=period,
+            auto_adjust=True,
+            progress=False,
+            session=_yf_session
+        )
         if df.empty:
             return [], []
         dates = df.index.strftime('%Y-%m-%d').tolist()
@@ -322,11 +98,7 @@ def get_stock_history(ticker, period='1mo'):
 
 def get_news(ticker):
     try:
-        if ':' in ticker:
-            search_term = ticker.split(':')[1]
-        else:
-            search_term = ticker
-        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={search_term}&region=US&lang=en-US"
+        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
         feed = feedparser.parse(url)
         return [
             {
@@ -342,15 +114,9 @@ def get_news(ticker):
 
 def get_ai_analysis(ticker, name, price, change_pct):
     try:
-        currency = (
-            'GHS' if ticker.startswith('GSE:') else
-            'NGN' if ticker.startswith('NGX:') else
-            'XOF' if ticker.startswith('BRVM:') else
-            'USD'
-        )
         prompt = (
             f"You are a financial analyst. Give a brief analysis of {name} ({ticker}). "
-            f"Current price: {currency} {price}. Change today: {change_pct:.2f}%. "
+            f"Current price: ${price}. Change today: {change_pct:.2f}%. "
             f"Cover: current trend, key factors affecting price, and short-term outlook. "
             f"Keep it concise, clear and under 150 words."
         )
@@ -380,8 +146,8 @@ def check_alerts():
             active_alerts = Alert.query.filter_by(active=True).all()
             for alert in active_alerts:
                 try:
-                    stock_info = get_stock_data(alert.ticker)
-                    current_p = stock_info['price'] if stock_info else None
+                    info = yf.Ticker(alert.ticker, session=_yf_session).info
+                    current_p = info.get('currentPrice') or info.get('regularMarketPrice')
                     if not current_p:
                         continue
                     triggered = (
@@ -408,42 +174,22 @@ scheduler.start()
 
 @app.route('/')
 def index():
-    indices_symbols = [
-        ('^GSPC',   'S&P 500'),
-        ('^IXIC',   'NASDAQ'),
-        ('^DJI',    'DOW JONES'),
-        ('BTC-USD', 'Bitcoin'),
-        ('ETH-USD', 'Ethereum'),
-    ]
+    indices_symbols = ['^GSPC', '^IXIC', '^DJI', 'BTC-USD', 'ETH-USD']
     indices_data = []
-    for symbol, fallback_name in indices_symbols:
+    for symbol in indices_symbols:
         try:
-            info = yf.Ticker(symbol).info
-            price = (
-                info.get('currentPrice') or
-                info.get('regularMarketPrice') or
-                info.get('previousClose')
-            )
-            prev = (
-                info.get('previousClose') or
-                info.get('regularMarketPreviousClose') or
-                price
-            )
-            change_pct = round(((price - prev) / prev * 100), 2) if prev and price else 0
+            info = yf.Ticker(symbol, session=_yf_session).info
+            price = info.get('currentPrice') or info.get('regularMarketPrice')
+            prev = info.get('previousClose') or info.get('regularMarketPreviousClose', 0)
+            change_pct = round(((price - prev) / prev * 100), 2) if prev else 0
             indices_data.append({
                 'symbol': symbol,
-                'name': info.get('shortName') or fallback_name,
+                'name': info.get('shortName', symbol),
                 'price': round(price, 2) if price else 'N/A',
                 'change_percent': change_pct
             })
-        except Exception as e:
-            print(f"[Index] Error fetching {symbol}: {e}")
-            indices_data.append({
-                'symbol': symbol,
-                'name': fallback_name,
-                'price': 'N/A',
-                'change_percent': 0
-            })
+        except Exception:
+            continue
     return render_template('index.html', indices=indices_data)
 
 
@@ -451,26 +197,10 @@ def index():
 def search():
     query = request.args.get('q', '').strip().upper()
     results = []
-
     if query:
         data = get_stock_data(query)
         if data:
             results.append(data)
-        else:
-            if ':' in query and query.split(':')[0] in AFRICAN_EXCHANGES:
-                flash(
-                    f'Could not find {query}. '
-                    f'Check the ticker — e.g. GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS',
-                    'danger'
-                )
-            else:
-                flash(
-                    f'No results for "{query}". '
-                    f'Try: AAPL, TSLA, BTC-USD. '
-                    f'For West Africa use: GSE:MTNGH, NGX:DANGCEM, BRVM:SNTS',
-                    'warning'
-                )
-
     return render_template('search.html', results=results, query=query)
 
 
@@ -521,8 +251,8 @@ def portfolio():
 
     for entry in entries:
         try:
-            stock_info = get_stock_data(entry.ticker)
-            current_price = stock_info['price'] if stock_info else 0
+            info = yf.Ticker(entry.ticker, session=_yf_session).info
+            current_price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
             current_value = round(current_price * entry.shares, 2)
             cost_basis = round(entry.buy_price * entry.shares, 2)
             gain_loss = round(current_value - cost_basis, 2)
@@ -663,14 +393,6 @@ def register():
             flash('Username already taken.', 'danger')
             return render_template('register.html')
 
-        confirm = request.form.get('confirm_password', '')
-        if password != confirm:
-            flash('Passwords do not match.', 'danger')
-            return render_template('register.html')
-        if len(password) < 6:
-            flash('Password must be at least 6 characters.', 'danger')
-            return render_template('register.html')
-
         new_user = User(username=username, email=email)
         new_user.set_password(password)
         db.session.add(new_user)
@@ -708,5 +430,6 @@ def logout():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, use_reloader=False)
-    
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
