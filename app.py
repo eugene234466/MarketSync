@@ -121,7 +121,7 @@ def get_ai_analysis(ticker, name, price, change_pct):
             f"Keep it concise, clear and under 150 words."
         )
         completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-20b",
             messages=[
                 {
                     "role": "system",
