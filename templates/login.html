@@ -15,20 +15,20 @@
             </div>
 
             <!-- FORM -->
-            <form action="{{ url_for('login') }}" method="POST">
+            <form id="login_form" action="{{ url_for('login') }}" method="POST">
                 <div class="mb-3">
-                    <label class="form-label text-muted small text-uppercase">Email Address</label>
-                    <input type="email" name="email"
+                    <label for="login_input" class="form-label text-muted small text-uppercase">Email or Username</label>
+                    <input type="text" id="login_input" name="email"
                            class="form-control bg-dark text-white border-secondary"
-                           placeholder="you@example.com" required autofocus>
+                           placeholder="you@example.com or username" required autofocus>
                 </div>
                 <div class="mb-4">
-                    <label class="form-label text-muted small text-uppercase">Password</label>
-                    <input type="password" name="password"
+                    <label for="login_password" class="form-label text-muted small text-uppercase">Password</label>
+                    <input type="password" id="login_password" name="password"
                            class="form-control bg-dark text-white border-secondary"
                            placeholder="••••••••" required>
                 </div>
-                <button type="submit" class="btn btn-success w-100 fw-bold py-2">
+                <button type="submit" id="login_btn" class="btn btn-success w-100 fw-bold py-2">
                     <i class="fa-solid fa-right-to-bracket me-2"></i> Login
                 </button>
             </form>
@@ -42,8 +42,21 @@
                 </a>
             </p>
 
+            <div id="iframe_notice" class="mt-3 text-center d-none">
+                <a href="{{ url_for('login') }}" target="_blank" rel="noopener noreferrer"
+                   class="badge bg-secondary bg-opacity-50 text-decoration-none text-light p-2">
+                    <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Open login in new tab
+                </a>
+            </div>
+
         </div>
     </div>
 </div>
+
+<script>
+    if (window.self !== window.top) {
+        document.getElementById('iframe_notice')?.classList.remove('d-none');
+    }
+</script>
 
 {% endblock %}

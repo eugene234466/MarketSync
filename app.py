@@ -10,6 +10,7 @@ from groq import Groq
 from dotenv import load_dotenv
 from apscheduler.schedulers.background import BackgroundScheduler
 from models import db, bcrypt, login_manager, User, Portfolio, Alert
+from yahoo_service import get_stock_data_service, get_stock_history_service, session_manager
 
 load_dotenv()
 
@@ -17,14 +18,43 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 static_dir = os.path.join(basedir, 'static')
 template_dir = os.path.join(basedir, 'templates')
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 app = Flask(
     __name__,
     static_folder=static_dir,
     static_url_path='/static',
     template_folder=template_dir
 )
+
+# Enable proxy headers support for Render, Vercel, and Cloud Run
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
+
+is_production = bool(os.getenv('RENDER') or os.getenv('VERCEL') or os.getenv('DYNO') or os.getenv('PRODUCTION'))
+
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_123')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Session and cookie security for top-level and iframe execution
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'None' if is_production else 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = is_production
+app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['REMEMBER_COOKIE_SAMESITE'] = 'None' if is_production else 'Lax'
+app.config['REMEMBER_COOKIE_SECURE'] = is_production
+app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=30)
+
+@app.after_request
+def add_cookie_security(response):
+    # Support Partitioned cookies (CHIPS) when running in iframes
+    set_cookies = response.headers.getlist('Set-Cookie')
+    if set_cookies:
+        response.headers.remove('Set-Cookie')
+        for cookie in set_cookies:
+            if 'SameSite=None' in cookie and 'Partitioned' not in cookie:
+                cookie = f"{cookie}; Partitioned"
+            response.headers.add('Set-Cookie', cookie)
+    return response
 
 # Explicit route to ensure CSS, JS, images, and manifest are served reliably on Vercel and cloud platforms
 @app.route('/static/<path:filename>')
@@ -293,78 +323,22 @@ def get_stock_data(ticker):
 
     # ── African exchange prefix (GSE:, NGX:, BRVM:) ──
     if ':' in ticker:
-        # Could be African exchange OR crypto like BTC-USD which yfinance handles
-        # Only route to African if it's a known exchange prefix
         prefix = ticker.split(':')[0]
         if prefix in AFRICAN_EXCHANGES:
             african_data = get_african_stock(ticker)
             if african_data:
                 return african_data
             return None
-        # Otherwise fall through to yfinance (handles BTC-USD etc via hyphen)
 
-    # ── Auto-add ^ for known indices ──
-    yf_ticker = INDEX_ALIASES.get(ticker, ticker)
-
-    # ── Yahoo Finance ──
-    try:
-        stock = yf.Ticker(yf_ticker)
-        info = stock.info
-        if not info:
-            return None
-
-        # Try multiple price fields — indices use regularMarketPrice
-        price = (
-            info.get('currentPrice') or
-            info.get('regularMarketPrice') or
-            info.get('previousClose') or
-            info.get('navPrice')
-        )
-        if not price:
-            return None
-
-        prev_close = (
-            info.get('previousClose') or
-            info.get('regularMarketPreviousClose') or
-            price
-        )
-        change = price - prev_close
-        change_percent = (change / prev_close * 100) if prev_close else 0
-
-        return {
-            'symbol': yf_ticker.upper(),
-            'name': info.get('longName') or info.get('shortName') or yf_ticker,
-            'price': round(price, 4),
-            'prev_close': round(prev_close, 4),
-            'change': round(change, 4),
-            'change_percent': round(change_percent, 2),
-            'volume': info.get('volume') or info.get('regularMarketVolume'),
-            'market_cap': info.get('marketCap'),
-            'high_52': info.get('fiftyTwoWeekHigh'),
-            'low_52': info.get('fiftyTwoWeekLow'),
-            'pe_ratio': info.get('trailingPE'),
-            'dividend': info.get('dividendYield'),
-            'currency': info.get('currency', 'USD'),
-            'exchange': info.get('fullExchangeName') or info.get('exchange', 'Yahoo Finance')
-        }
-    except Exception as e:
-        print(f"[YF] Error fetching {yf_ticker}: {e}")
-        return None
+    # ── Robust Yahoo Finance + Fallbacks Service ──
+    return get_stock_data_service(ticker)
 
 
 def get_stock_history(ticker, period='1mo'):
     # African exchange tickers have no Yahoo Finance history
     if ':' in ticker:
         return [], []
-    try:
-        df = yf.download(ticker, period=period, auto_adjust=True, progress=False)
-        if df.empty:
-            return [], []
-        dates = df.index.strftime('%Y-%m-%d').tolist()
-        prices = df['Close'].squeeze().round(2).tolist()
-        return dates, prices
-    except Exception:
-        return [], []
+    return get_stock_history_service(ticker, period=period)
 
 
 def get_news(ticker):
@@ -506,26 +480,23 @@ def index():
     indices_data = []
     for symbol, fallback_name in indices_symbols:
         try:
-            info = yf.Ticker(symbol).info
-            price = (
-                info.get('currentPrice') or
-                info.get('regularMarketPrice') or
-                info.get('previousClose')
-            )
-            prev = (
-                info.get('previousClose') or
-                info.get('regularMarketPreviousClose') or
-                price
-            )
-            change_pct = round(((price - prev) / prev * 100), 2) if prev and price else 0
-            indices_data.append({
-                'symbol': symbol,
-                'name': info.get('shortName') or fallback_name,
-                'price': round(price, 2) if price else 'N/A',
-                'change_percent': change_pct
-            })
+            stock = get_stock_data(symbol)
+            if stock and stock.get('price'):
+                indices_data.append({
+                    'symbol': symbol,
+                    'name': stock.get('name') or fallback_name,
+                    'price': round(stock['price'], 2),
+                    'change_percent': round(stock.get('change_percent', 0), 2)
+                })
+            else:
+                indices_data.append({
+                    'symbol': symbol,
+                    'name': fallback_name,
+                    'price': 'N/A',
+                    'change_percent': 0
+                })
         except Exception as e:
-            print(f"[Index] Error fetching {symbol}: {e}")
+            print(f"[Index] Error loading {symbol}: {e}")
             indices_data.append({
                 'symbol': symbol,
                 'name': fallback_name,
@@ -755,33 +726,45 @@ def register():
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered.', 'danger')
-            return render_template('register.html')
-        if User.query.filter_by(username=username).first():
-            flash('Username already taken.', 'danger')
-            return render_template('register.html')
-
         confirm = request.form.get('confirm_password', '')
+
+        if not username or not email or not password:
+            flash('All fields are required.', 'danger')
+            return render_template('register.html')
+
+        if len(username) < 2:
+            flash('Username must be at least 2 characters long.', 'danger')
+            return render_template('register.html')
+
         if password != confirm:
             flash('Passwords do not match.', 'danger')
             return render_template('register.html')
+
         if len(password) < 6:
             flash('Password must be at least 6 characters.', 'danger')
             return render_template('register.html')
 
         try:
+            # Check for existing email or username (case-insensitive)
+            if User.query.filter(db.func.lower(User.email) == email.lower()).first():
+                flash('Email is already registered. Please sign in.', 'danger')
+                return render_template('register.html')
+
+            if User.query.filter(db.func.lower(User.username) == username.lower()).first():
+                flash('Username is already taken. Please choose a different one.', 'danger')
+                return render_template('register.html')
+
             new_user = User(username=username, email=email)
             new_user.set_password(password)
             db.session.add(new_user)
             db.session.commit()
-            login_user(new_user)
+            login_user(new_user, remember=True)
             flash(f'Welcome to MarketSync, {username}!', 'success')
             return redirect(url_for('index'))
         except Exception as e:
             db.session.rollback()
-            flash(f'Error creating account: {str(e)}', 'danger')
+            app.logger.error(f"Error during registration: {e}")
+            flash('Database error during registration. Please try again.', 'danger')
             return render_template('register.html')
 
     return render_template('register.html')
@@ -792,20 +775,33 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     if request.method == 'POST':
-        email = request.form.get('email', '').strip().lower()
+        login_id = request.form.get('email', '').strip()
         password = request.form.get('password', '')
+
+        if not login_id or not password:
+            flash('Please enter both your email/username and password.', 'danger')
+            return render_template('login.html')
+
         try:
-            user = User.query.filter_by(email=email).first()
+            # Support logging in by either email OR username
+            user = User.query.filter(
+                (db.func.lower(User.email) == login_id.lower()) |
+                (db.func.lower(User.username) == login_id.lower())
+            ).first()
+
             if user and user.check_password(password):
                 login_user(user, remember=True)
                 flash(f'Welcome back, {user.username}!', 'success')
                 next_page = request.args.get('next')
-                return redirect(next_page or url_for('index'))
-            flash('Invalid email or password.', 'danger')
+                if next_page and next_page.startswith('/'):
+                    return redirect(next_page)
+                return redirect(url_for('index'))
+
+            flash('Invalid email/username or password.', 'danger')
         except Exception as e:
             db.session.rollback()
             app.logger.warning(f"Login database error: {e}")
-            flash('Database temporarily unavailable. Please try again in a moment.', 'danger')
+            flash('Database temporarily unavailable. Please try again.', 'danger')
     return render_template('login.html')
 
 

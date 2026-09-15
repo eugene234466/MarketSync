@@ -41,6 +41,36 @@ def init_db(app):
         print(f"  postgresql://postgres.{ref}:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?sslmode=require", flush=True)
         print("=" * 72 + "\n", flush=True)
 
+    # If remote PostgreSQL host is configured, perform a quick pre-flight TCP check.
+    # On Render, connecting to IPv6-only hosts fails with "Network is unreachable", which
+    # crashes all user registration and login requests if SQLAlchemy binds to it.
+    if not database_url.startswith('sqlite'):
+        is_reachable = True
+        try:
+            import urllib.parse
+            import socket
+            parsed = urllib.parse.urlparse(database_url)
+            host = parsed.hostname
+            port = parsed.port or 5432
+            if host and host not in ('localhost', '127.0.0.1'):
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(2.5)
+                try:
+                    s.connect((host, port))
+                    s.close()
+                except Exception as net_err:
+                    print(f"[MarketSync] Remote database {host}:{port} unreachable ({net_err}).", flush=True)
+                    print("[MarketSync] Falling back to SQLite so registration and login succeed.", flush=True)
+                    is_reachable = False
+        except Exception:
+            pass
+
+        if not is_reachable:
+            if os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+                database_url = 'sqlite:////tmp/marketsync.db'
+            else:
+                database_url = 'sqlite:///marketsync.db'
+
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -119,10 +149,17 @@ class User(UserMixin, db.Model):
     alerts = db.relationship('Alert', backref='user', lazy=True)
 
     def set_password(self, password):
+        if isinstance(password, str):
+            password = password.strip()
         self.password = bcrypt.generate_password_hash(password).decode('utf-8')
 
     def check_password(self, password):
-        return bcrypt.check_password_hash(self.password, password)
+        if not self.password or not password:
+            return False
+        try:
+            return bcrypt.check_password_hash(self.password, password.strip())
+        except Exception:
+            return False
 
     def __repr__(self):
         return f'<User {self.username}>'

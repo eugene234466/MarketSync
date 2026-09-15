@@ -377,6 +377,42 @@ async function getStockData(ticker: string) {
     return stockData;
   } catch (err) {
     console.error(`[YF] Error fetching ${yfTicker}:`, err);
+    // Crypto fallback
+    if (yfTicker.includes('BTC') || yfTicker.includes('ETH') || yfTicker.endsWith('-USD')) {
+      try {
+        const base = yfTicker.replace('-USD', '').replace('^', '');
+        const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${base}USDT`, {
+          signal: AbortSignal.timeout(4000)
+        });
+        if (res.ok) {
+          const d = await res.json();
+          const lastPrice = parseFloat(d.lastPrice) || 0;
+          const prevClose = parseFloat(d.prevClosePrice) || lastPrice;
+          const change = Math.round((lastPrice - prevClose) * 100) / 100;
+          const changePercent = prevClose ? Math.round(((lastPrice - prevClose) / prevClose) * 10000) / 100 : 0;
+          const fallbackData = {
+            symbol: yfTicker.toUpperCase(),
+            name: base === 'BTC' ? 'Bitcoin' : base === 'ETH' ? 'Ethereum' : `${base} Crypto`,
+            price: Math.round(lastPrice * 100) / 100,
+            prev_close: Math.round(prevClose * 100) / 100,
+            change,
+            change_percent: changePercent,
+            volume: parseFloat(d.volume) || null,
+            market_cap: null,
+            high_52: parseFloat(d.highPrice) || null,
+            low_52: parseFloat(d.lowPrice) || null,
+            pe_ratio: null,
+            dividend: null,
+            currency: 'USD',
+            exchange: 'Crypto Global'
+          };
+          setYfCached(yfTicker, fallbackData);
+          return fallbackData;
+        }
+      } catch (fallbackErr) {
+        console.error(`[Crypto Fallback] Error for ${yfTicker}:`, fallbackErr);
+      }
+    }
     return null;
   }
 }
@@ -583,6 +619,9 @@ setInterval(checkAlerts, 15 * 60 * 1000);
 const app = express();
 const PORT = 3000;
 
+// Required for Cloud Run, nginx, and AI Studio iframe reverse proxies
+app.set('trust proxy', 1);
+
 // Flash message type declaration
 declare module 'express-session' {
   interface SessionData {
@@ -594,14 +633,52 @@ declare module 'express-session' {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Robust session configuration for iframe and standalone environments
 app.use(
   session({
     secret: process.env.SECRET_KEY || 'dev_key_123',
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 30 * 24 * 60 * 60 * 1000 }
+    proxy: true,
+    cookie: {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      httpOnly: true,
+      sameSite: 'none',
+      secure: true
+    }
   }) as any
 );
+
+// Middleware to ensure Partitioned (CHIPS) attribute is added to Set-Cookie for full iframe support
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  const origSetHeader = res.setHeader.bind(res);
+  res.setHeader = function (name: string, value: any) {
+    if (typeof name === 'string' && name.toLowerCase() === 'set-cookie') {
+      const addAttributes = (cookieStr: string) => {
+        let str = cookieStr;
+        if (!/SameSite=/i.test(str)) {
+          str += '; SameSite=None';
+        }
+        if (!/Secure/i.test(str)) {
+          str += '; Secure';
+        }
+        if (!/Partitioned/i.test(str)) {
+          str += '; Partitioned';
+        }
+        return str;
+      };
+
+      if (Array.isArray(value)) {
+        value = value.map(c => typeof c === 'string' ? addAttributes(c) : c);
+      } else if (typeof value === 'string') {
+        value = addAttributes(value);
+      }
+    }
+    return origSetHeader(name, value);
+  };
+  next();
+});
 
 app.use('/static', express.static(path.join(__dirname, 'static')));
 
@@ -1024,7 +1101,10 @@ app.post('/register', (req: Request, res: Response) => {
 
   req.session.userId = newUser.id;
   flash(req, `Welcome to MarketSync, ${username}!`, 'success');
-  res.redirect('/');
+  req.session.save((saveErr) => {
+    if (saveErr) console.error('[Register] Session save error:', saveErr);
+    res.redirect('/');
+  });
 });
 
 app.get('/login', (req: Request, res: Response) => {
@@ -1035,25 +1115,37 @@ app.get('/login', (req: Request, res: Response) => {
 app.post('/login', (req: Request, res: Response) => {
   if (req.session.userId) return res.redirect('/');
 
-  const email = String(req.body.email || '').trim().toLowerCase();
+  const loginId = String(req.body.email || '').trim().toLowerCase();
   const password = String(req.body.password || '');
 
+  if (!loginId || !password) {
+    flash(req, 'Please enter both your email/username and password.', 'danger');
+    return res.render('login.html');
+  }
+
   const db = loadDb();
-  const user = db.users.find(u => u.email === email);
+  const user = db.users.find(
+    u => u.email.toLowerCase() === loginId || u.username.toLowerCase() === loginId
+  );
 
   if (user && bcrypt.compareSync(password, user.password)) {
     req.session.userId = user.id;
     flash(req, `Welcome back, ${user.username}!`, 'success');
     const nextPage = String(req.query.next || '');
-    return res.redirect(nextPage.startsWith('/') ? nextPage : '/');
+    return req.session.save((saveErr) => {
+      if (saveErr) console.error('[Login] Session save error:', saveErr);
+      res.redirect(nextPage.startsWith('/') ? nextPage : '/');
+    });
   }
 
-  flash(req, 'Invalid email or password.', 'danger');
+  flash(req, 'Invalid email/username or password.', 'danger');
   res.render('login.html');
 });
 
 app.get('/logout', (req: Request, res: Response) => {
-  req.session.destroy(() => {
+  req.session.destroy((destroyErr) => {
+    if (destroyErr) console.error('[Logout] Session destroy error:', destroyErr);
+    res.clearCookie('connect.sid', { path: '/' });
     res.redirect('/');
   });
 });
