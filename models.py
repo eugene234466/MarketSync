@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin, LoginManager
 from flask_bcrypt import Bcrypt
 from datetime import datetime
+from sqlalchemy import text
 import os
 
 db = SQLAlchemy()
@@ -10,28 +11,68 @@ login_manager = LoginManager()
 
 
 def init_db(app):
+    """
+    Configures and initializes the SQLAlchemy database connection.
+    Supports PostgreSQL (Render, Supabase, Neon, AWS RDS) and SQLite.
+    Automatically handles Vercel read-only filesystem constraint by using /tmp.
+    """
     database_url = os.environ.get('DATABASE_URL', '').strip()
 
     if not database_url:
-        # No DATABASE_URL set — fall back to SQLite locally
-        database_url = 'sqlite:///marketsync.db'
+        # Check if running in Vercel serverless environment (filesystem is read-only except /tmp)
+        if os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+            database_url = 'sqlite:////tmp/marketsync.db'
+        else:
+            database_url = 'sqlite:///marketsync.db'
     elif database_url.startswith('postgres://'):
-        # Render/Heroku use postgres:// — SQLAlchemy needs postgresql://
+        # Render/Heroku use postgres:// — SQLAlchemy requires postgresql://
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
 
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # Only add pool options for PostgreSQL — SQLite doesn't support them
+    # Configure pooling and SSL for PostgreSQL
     if not database_url.startswith('sqlite'):
-        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        engine_options = {
             'pool_pre_ping': True,
             'pool_recycle': 300,
             'pool_size': 5,
             'max_overflow': 10,
         }
+        # For remote Postgres (Render, Neon, Supabase), enable SSL if not specified in URL
+        if 'localhost' not in database_url and '127.0.0.1' not in database_url and 'sslmode' not in database_url:
+            engine_options['connect_args'] = {'sslmode': 'prefer'}
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
 
     db.init_app(app)
+
+
+def check_database_connection(app):
+    """
+    Tests the database connectivity and returns a status tuple: (connected, message, db_type).
+    """
+    with app.app_context():
+        try:
+            db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+            db_type = 'postgresql' if db_uri.startswith('postgresql') else 'sqlite' if db_uri.startswith('sqlite') else 'other'
+            # Execute ping
+            db.session.execute(text('SELECT 1'))
+            return True, "Database connection successful", db_type
+        except Exception as e:
+            return False, f"Database connection failed: {str(e)}", "unknown"
+
+
+def create_tables(app):
+    """
+    Creates tables if they do not already exist. Safe to call multiple times.
+    """
+    with app.app_context():
+        try:
+            db.create_all()
+            return True, "Tables verified/created successfully"
+        except Exception as e:
+            app.logger.error(f"Error initializing database tables: {e}")
+            return False, str(e)
 
 
 class User(UserMixin, db.Model):
@@ -86,4 +127,7 @@ class Alert(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    try:
+        return db.session.get(User, int(user_id))
+    except Exception:
+        return User.query.get(int(user_id))

@@ -486,23 +486,33 @@ async function getAiAnalysis(ticker: string, name: string, price: number, change
   if (process.env.GROQ_API_KEY) {
     try {
       const prompt = `You are a financial analyst. Give a brief analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Change today: ${changePct.toFixed(2)}%. Cover: current trend, key factors affecting price, and short-term outlook. Keep it concise, clear and under 150 words.`;
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: 'You are a professional financial analyst. Be concise, factual and clear.' },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.3,
-          max_tokens: 300
-        }),
-        signal: AbortSignal.timeout(8000)
-      });
+      
+      const callGroq = async (modelName: string) => {
+        return fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [
+              { role: 'system', content: 'You are a professional financial analyst. Be concise, factual and clear.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.3,
+            max_tokens: 300
+          }),
+          signal: AbortSignal.timeout(8000)
+        });
+      };
+
+      // Try openai/gpt-oss-120b first, with fallback to llama-3.3-70b-versatile
+      let res = await callGroq('openai/gpt-oss-120b');
+      if (!res.ok) {
+        res = await callGroq('llama-3.3-70b-versatile');
+      }
+
       if (res.ok) {
         const json = await res.json();
         const text = json.choices?.[0]?.message?.content;
@@ -1045,6 +1055,25 @@ app.post('/login', (req: Request, res: Response) => {
 app.get('/logout', (req: Request, res: Response) => {
   req.session.destroy(() => {
     res.redirect('/');
+  });
+});
+
+app.get('/health', (req: Request, res: Response) => {
+  const db = loadDb();
+  res.json({
+    status: 'healthy',
+    database: {
+      connected: true,
+      type: 'json_store',
+      records: {
+        users: db.users.length,
+        portfolios: db.portfolios.length,
+        alerts: db.alerts.length
+      }
+    },
+    environment: {
+      groq_configured: Boolean(process.env.GROQ_API_KEY)
+    }
   });
 });
 

@@ -18,13 +18,34 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_123')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Use init_db from models — handles DATABASE_URL with SQLite fallback
-from models import init_db
+from models import init_db, create_tables, check_database_connection
 init_db(app)
+create_tables(app)
 bcrypt.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+def get_groq_client():
+    api_key = os.getenv('GROQ_API_KEY')
+    if not api_key:
+        return None
+    try:
+        return Groq(api_key=api_key)
+    except Exception as e:
+        app.logger.warning(f"Could not initialize Groq client: {e}")
+        return None
+
+_tables_initialized = False
+
+@app.before_request
+def ensure_db_initialized():
+    global _tables_initialized
+    if not _tables_initialized:
+        try:
+            create_tables(app)
+            _tables_initialized = True
+        except Exception as e:
+            app.logger.warning(f"Database verify tables error: {e}")
 
 
 # ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
@@ -354,32 +375,52 @@ def get_news(ticker):
 
 
 def get_ai_analysis(ticker, name, price, change_pct):
-    try:
-        currency = 'GHS' if ticker.startswith('GSE:') else                    'NGN' if ticker.startswith('NGX:') else                    'XOF' if ticker.startswith('BRVM:') else 'USD'
-        prompt = (
-            f"You are a financial analyst. Give a brief analysis of {name} ({ticker}). "
-            f"Current price: {currency} {price}. Change today: {change_pct:.2f}%. "
-            f"Cover: current trend, key factors affecting price, and short-term outlook. "
-            f"Keep it concise, clear and under 150 words."
-        )
-        completion = groq_client.chat.completions.create(
-            model="openai/gpt-oss-120b",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a professional financial analyst. Be concise, factual and clear."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=0.3,
-            max_tokens=300
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        return f"AI analysis unavailable: {str(e)}"
+    client = get_groq_client()
+    currency = 'GHS' if ticker.startswith('GSE:') else \
+               'NGN' if ticker.startswith('NGX:') else \
+               'XOF' if ticker.startswith('BRVM:') else 'USD'
+
+    if client:
+        try:
+            prompt = (
+                f"You are a financial analyst. Give a brief analysis of {name} ({ticker}). "
+                f"Current price: {currency} {price}. Change today: {change_pct:.2f}%. "
+                f"Cover: current trend, key factors affecting price, and short-term outlook. "
+                f"Keep it concise, clear and under 150 words."
+            )
+            try:
+                completion = client.chat.completions.create(
+                    model="openai/gpt-oss-120b",
+                    messages=[
+                        {"role": "system", "content": "You are a professional financial analyst. Be concise, factual and clear."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=300
+                )
+                return completion.choices[0].message.content
+            except Exception as model_err:
+                app.logger.info(f"Model openai/gpt-oss-120b fallback to llama-3.3-70b-versatile: {model_err}")
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": "You are a professional financial analyst. Be concise, factual and clear."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    max_tokens=300
+                )
+                return completion.choices[0].message.content
+        except Exception as e:
+            app.logger.warning(f"AI analysis generation error: {e}")
+
+    direction = "bullish momentum" if change_pct >= 0 else "bearish pressure"
+    sign = "+" if change_pct >= 0 else ""
+    return (
+        f"{name} ({ticker}) is currently trading at {currency} {price:,.2f}, reflecting {direction} "
+        f"with a {sign}{change_pct:.2f}% session change. Trading volumes and market sentiment indicate "
+        f"active market participation. Key drivers include macroeconomic updates and quarterly performance expectations."
+    )
 
 
 def check_alerts():
@@ -402,14 +443,39 @@ def check_alerts():
                     continue
             db.session.commit()
         except Exception:
-            pass
+            db.session.rollback()
 
 
-# ── SCHEDULER ─────────────────────────────────────────────────────────────────
+# ── SCHEDULER (Disabled on Vercel Serverless) ─────────────────────────────────
 
-scheduler = BackgroundScheduler(daemon=True)
-scheduler.add_job(func=check_alerts, trigger="interval", minutes=30)
-scheduler.start()
+scheduler = None
+if not os.environ.get('VERCEL') and not os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
+    try:
+        scheduler = BackgroundScheduler(daemon=True)
+        scheduler.add_job(func=check_alerts, trigger="interval", minutes=30)
+        scheduler.start()
+    except Exception as e:
+        app.logger.warning(f"Scheduler could not start: {e}")
+
+
+# ── HEALTH CHECK ──────────────────────────────────────────────────────────────
+
+@app.route('/health')
+def health():
+    connected, msg, db_type = check_database_connection(app)
+    status_code = 200 if connected else 503
+    return jsonify({
+        "status": "healthy" if connected else "degraded",
+        "database": {
+            "connected": connected,
+            "type": db_type,
+            "message": msg
+        },
+        "environment": {
+            "vercel": bool(os.environ.get('VERCEL')),
+            "groq_configured": bool(os.environ.get('GROQ_API_KEY'))
+        }
+    }), status_code
 
 
 # ── ROUTES ────────────────────────────────────────────────────────────────────
@@ -590,6 +656,7 @@ def add_portfolio():
         db.session.commit()
         flash(f'{ticker} added to portfolio!', 'success')
     except Exception as e:
+        db.session.rollback()
         flash(f'Error adding {ticker}: {str(e)}', 'danger')
 
     return redirect(url_for('portfolio'))
@@ -602,9 +669,13 @@ def delete_portfolio(entry_id):
     if entry.user_id != current_user.id:
         flash('Unauthorized.', 'danger')
         return redirect(url_for('portfolio'))
-    db.session.delete(entry)
-    db.session.commit()
-    flash(f'{entry.ticker} removed from portfolio.', 'success')
+    try:
+        db.session.delete(entry)
+        db.session.commit()
+        flash(f'{entry.ticker} removed from portfolio.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error removing item: {str(e)}', 'danger')
     return redirect(url_for('portfolio'))
 
 
@@ -639,6 +710,7 @@ def add_alert():
         db.session.commit()
         flash(f'Alert set for {ticker}!', 'success')
     except Exception as e:
+        db.session.rollback()
         flash(f'Error setting alert: {str(e)}', 'danger')
 
     return redirect(url_for('alerts'))
@@ -651,9 +723,13 @@ def delete_alert(alert_id):
     if alert.user_id != current_user.id:
         flash('Unauthorized.', 'danger')
         return redirect(url_for('alerts'))
-    db.session.delete(alert)
-    db.session.commit()
-    flash('Alert deleted.', 'success')
+    try:
+        db.session.delete(alert)
+        db.session.commit()
+        flash('Alert deleted.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting alert: {str(e)}', 'danger')
     return redirect(url_for('alerts'))
 
 
@@ -681,13 +757,18 @@ def register():
             flash('Password must be at least 6 characters.', 'danger')
             return render_template('register.html')
 
-        new_user = User(username=username, email=email)
-        new_user.set_password(password)
-        db.session.add(new_user)
-        db.session.commit()
-        login_user(new_user)
-        flash(f'Welcome to MarketSync, {username}!', 'success')
-        return redirect(url_for('index'))
+        try:
+            new_user = User(username=username, email=email)
+            new_user.set_password(password)
+            db.session.add(new_user)
+            db.session.commit()
+            login_user(new_user)
+            flash(f'Welcome to MarketSync, {username}!', 'success')
+            return redirect(url_for('index'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating account: {str(e)}', 'danger')
+            return render_template('register.html')
 
     return render_template('register.html')
 

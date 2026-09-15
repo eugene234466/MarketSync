@@ -4,9 +4,14 @@ services:
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
+    healthCheckPath: /health
     plan: free
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
       - key: SECRET_KEY
-        sync: false
+        generateValue: true
       - key: GROQ_API_KEY
-        sync: false          
+        sync: false
+      - key: DATABASE_URL
+        sync: false
