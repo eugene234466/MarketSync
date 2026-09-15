@@ -44,7 +44,7 @@
         {% for p in ['1d', '5d', '1mo', '3mo', '6mo', '1y'] %}
         <a href="{{ url_for('stock_detail', ticker=data.symbol, period=p) }}"
            class="btn btn-sm {% if period == p %}btn-success{% else %}btn-outline-secondary{% endif %}">
-            {{ p.upper() }}
+            {{ p | upper }}
         </a>
         {% endfor %}
     </div>
@@ -60,12 +60,12 @@
 <!-- STATS ROW -->
 <div class="row row-cols-2 row-cols-md-3 row-cols-lg-6 g-3 mb-4">
     {% set stats = [
-        ('Volume', data.volume | default('N/A')),
-        ('Market Cap', data.market_cap | default('N/A')),
-        ('52W High', data.high_52 | default('N/A')),
-        ('52W Low', data.low_52 | default('N/A')),
-        ('P/E Ratio', data.pe_ratio | default('N/A')),
-        ('Div Yield', data.dividend | default('N/A'))
+        ['Volume', data.volume | default('N/A')],
+        ['Market Cap', data.market_cap | default('N/A')],
+        ['52W High', data.high_52 | default('N/A')],
+        ['52W Low', data.low_52 | default('N/A')],
+        ['P/E Ratio', data.pe_ratio | default('N/A')],
+        ['Div Yield', data.dividend | default('N/A')]
     ] %}
     {% for title, value in stats %}
     <div class="col">
