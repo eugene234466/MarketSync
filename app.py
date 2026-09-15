@@ -4,7 +4,7 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_from_directory
 from flask_login import login_user, logout_user, login_required, current_user
 from groq import Groq
 from dotenv import load_dotenv
@@ -13,9 +13,23 @@ from models import db, bcrypt, login_manager, User, Portfolio, Alert
 
 load_dotenv()
 
-app = Flask(__name__)
+basedir = os.path.abspath(os.path.dirname(__file__))
+static_dir = os.path.join(basedir, 'static')
+template_dir = os.path.join(basedir, 'templates')
+
+app = Flask(
+    __name__,
+    static_folder=static_dir,
+    static_url_path='/static',
+    template_folder=template_dir
+)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_123')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Explicit route to ensure CSS, JS, images, and manifest are served reliably on Vercel and cloud platforms
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory(static_dir, filename)
 
 # Use init_db from models — handles DATABASE_URL with SQLite fallback
 from models import init_db, create_tables, check_database_connection
@@ -780,13 +794,18 @@ def login():
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-        user = User.query.filter_by(email=email).first()
-        if user and user.check_password(password):
-            login_user(user, remember=True)
-            flash(f'Welcome back, {user.username}!', 'success')
-            next_page = request.args.get('next')
-            return redirect(next_page or url_for('index'))
-        flash('Invalid email or password.', 'danger')
+        try:
+            user = User.query.filter_by(email=email).first()
+            if user and user.check_password(password):
+                login_user(user, remember=True)
+                flash(f'Welcome back, {user.username}!', 'success')
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('index'))
+            flash('Invalid email or password.', 'danger')
+        except Exception as e:
+            db.session.rollback()
+            app.logger.warning(f"Login database error: {e}")
+            flash('Database temporarily unavailable. Please try again in a moment.', 'danger')
     return render_template('login.html')
 
 

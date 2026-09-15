@@ -28,6 +28,19 @@ def init_db(app):
         # Render/Heroku use postgres:// — SQLAlchemy requires postgresql://
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
 
+    # Detect direct Supabase connection string on IPv4-only platforms (like Render)
+    if 'supabase.co' in database_url and 'pooler.supabase.com' not in database_url:
+        import re
+        ref_match = re.search(r'@db\.([a-z0-9]+)\.supabase\.co', database_url)
+        ref = ref_match.group(1) if ref_match else '<project-ref>'
+        print("\n" + "=" * 72, flush=True)
+        print("[MarketSync Alert] Direct Supabase host detected: db." + ref + ".supabase.co", flush=True)
+        print("Note: Render free tier only supports IPv4. Direct Supabase uses IPv6 and fails with:", flush=True)
+        print("  'OperationalError: Network is unreachable'", flush=True)
+        print("To connect directly from Render, use the Supabase Connection Pooler URI (IPv4 compatible):", flush=True)
+        print(f"  postgresql://postgres.{ref}:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?sslmode=require", flush=True)
+        print("=" * 72 + "\n", flush=True)
+
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -40,8 +53,10 @@ def init_db(app):
             'max_overflow': 10,
         }
         # For remote Postgres (Render, Neon, Supabase), enable SSL if not specified in URL
+        connect_args = {'connect_timeout': 5}
         if 'localhost' not in database_url and '127.0.0.1' not in database_url and 'sslmode' not in database_url:
-            engine_options['connect_args'] = {'sslmode': 'prefer'}
+            connect_args['sslmode'] = 'prefer'
+        engine_options['connect_args'] = connect_args
         app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options
 
     db.init_app(app)
@@ -65,6 +80,8 @@ def check_database_connection(app):
 def create_tables(app):
     """
     Creates tables if they do not already exist. Safe to call multiple times.
+    If remote PostgreSQL fails due to network unreachability (e.g. Render IPv6 limitation),
+    safely falls back to local SQLite so the web service remains operational.
     """
     with app.app_context():
         try:
@@ -72,6 +89,21 @@ def create_tables(app):
             return True, "Tables verified/created successfully"
         except Exception as e:
             app.logger.error(f"Error initializing database tables: {e}")
+            err_str = str(e).lower()
+            # If remote database is unreachable (e.g. Supabase IPv6 on Render), fall back to SQLite
+            if 'network is unreachable' in err_str or 'could not connect' in err_str or 'connection refused' in err_str:
+                app.logger.warning("Remote database unreachable. Falling back to local SQLite storage to keep app operational.")
+                fallback = 'sqlite:////tmp/marketsync.db' if (os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')) else 'sqlite:///marketsync.db'
+                try:
+                    app.config['SQLALCHEMY_DATABASE_URI'] = fallback
+                    app.config.pop('SQLALCHEMY_ENGINE_OPTIONS', None)
+                    db.engine.dispose()
+                    db.init_app(app)
+                    db.create_all()
+                    app.logger.info(f"Fallback SQLite database initialized successfully at {fallback}")
+                    return True, f"Fell back to SQLite: {fallback}"
+                except Exception as fallback_err:
+                    app.logger.error(f"Fallback SQLite error: {fallback_err}")
             return False, str(e)
 
 
@@ -130,4 +162,8 @@ def load_user(user_id):
     try:
         return db.session.get(User, int(user_id))
     except Exception:
-        return User.query.get(int(user_id))
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return None
