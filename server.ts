@@ -605,6 +605,16 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
+// Disable HTTP caching on all dynamic HTML routes so login/logout states reflect instantly
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (!req.path.startsWith('/static')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
 app.use('/static', express.static(path.join(__dirname, 'static')));
 
 // Flash helper
@@ -1050,16 +1060,34 @@ app.post('/login', async (req: Request, res: Response) => {
 });
 
 function handleLogout(req: Request, res: Response) {
-  // Clear user ID first
-  req.session.userId = undefined;
-  // Destroy session store record
-  req.session.destroy((destroyErr) => {
-    if (destroyErr) console.error('[Logout] Session destroy error:', destroyErr);
-    // Clear both possible cookie names
-    res.clearCookie('marketsync_sid', { path: '/' });
-    res.clearCookie('connect.sid', { path: '/' });
+  // Clear user ID and flash messages from session
+  if (req.session) {
+    req.session.userId = undefined;
+    req.session.flashes = [];
+  }
+
+  // Clear cookie with full attributes matching creation
+  const cookieOptions = {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'none' as const,
+    secure: true
+  };
+
+  res.clearCookie('marketsync_sid', cookieOptions);
+  res.clearCookie('marketsync_sid', { path: '/' });
+  res.clearCookie('connect.sid', cookieOptions);
+  res.clearCookie('connect.sid', { path: '/' });
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+
+  if (req.session && typeof req.session.destroy === 'function') {
+    req.session.destroy((destroyErr) => {
+      if (destroyErr) console.error('[Logout] Session destroy error:', destroyErr);
+      res.redirect('/');
+    });
+  } else {
     res.redirect('/');
-  });
+  }
 }
 
 app.get('/logout', handleLogout);

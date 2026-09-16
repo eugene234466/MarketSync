@@ -1,6 +1,5 @@
-const CACHE_NAME = 'marketsync-v1';
+const CACHE_NAME = 'marketsync-v3';
 const STATIC_ASSETS = [
-    '/',
     '/static/css/style.css',
     '/static/js/main.js',
     '/static/images/logo.png',
@@ -9,7 +8,7 @@ const STATIC_ASSETS = [
     'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css'
 ];
 
-// Install — cache static assets
+// Install — cache static assets only
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache => {
@@ -19,7 +18,7 @@ self.addEventListener('install', event => {
     self.skipWaiting();
 });
 
-// Activate — clean old caches
+// Activate — clean old caches immediately
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
@@ -32,24 +31,37 @@ self.addEventListener('activate', event => {
     self.clients.claim();
 });
 
-// Fetch — network first, fallback to cache
+// Fetch — bypass cache for all page navigations and non-static assets
 self.addEventListener('fetch', event => {
-    // Skip non-GET and API requests
+    // Only handle GET requests
     if (event.request.method !== 'GET') return;
-    if (event.request.url.includes('/stock/') ||
-        event.request.url.includes('/search') ||
-        event.request.url.includes('/portfolio') ||
-        event.request.url.includes('/alerts')) return;
+
+    // Never cache page navigations or auth routes (login, logout, register, etc.)
+    if (event.request.mode === 'navigate') return;
+
+    const url = new URL(event.request.url);
+
+    // Only cache static resources (CSS, JS, images, CDN fonts/libraries)
+    const isStatic = url.pathname.startsWith('/static/') ||
+                     url.hostname.includes('cdn.jsdelivr.net') ||
+                     url.hostname.includes('cdnjs.cloudflare.com') ||
+                     url.hostname.includes('fonts.googleapis.com') ||
+                     url.hostname.includes('fonts.gstatic.com');
+
+    if (!isStatic) return;
 
     event.respondWith(
-        fetch(event.request)
-            .then(response => {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then(cache => {
-                    cache.put(event.request, clone);
-                });
+        caches.match(event.request).then(cached => {
+            if (cached) return cached;
+            return fetch(event.request).then(response => {
+                if (response && response.status === 200) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => {
+                        cache.put(event.request, clone);
+                    });
+                }
                 return response;
-            })
-            .catch(() => caches.match(event.request))
+            });
+        }).catch(() => fetch(event.request))
     );
 });
