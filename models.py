@@ -18,12 +18,9 @@ def init_db(app):
     """
     database_url = os.environ.get('DATABASE_URL', '').strip()
 
-    if not database_url:
-        # Check if running in Vercel serverless environment (filesystem is read-only except /tmp)
-        if os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
-            database_url = 'sqlite:////tmp/marketsync.db'
-        else:
-            database_url = 'sqlite:///marketsync.db'
+    # If database_url points to the direct IPv6-only Supabase host with connection errors, use the working Supabase pooler
+    if not database_url or 'db.cnfthimhzjrhhlyxwauq.supabase.co' in database_url:
+        database_url = 'postgresql://postgres.cnfthimhzjrhhlyxwauq:uYDVojzwlW4gFVJY@aws-1-eu-north-1.pooler.supabase.com:6543/postgres'
     elif database_url.startswith('postgres://'):
         # Render/Heroku use postgres:// — SQLAlchemy requires postgresql://
         database_url = database_url.replace('postgres://', 'postgresql://', 1)

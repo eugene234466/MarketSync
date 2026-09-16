@@ -5,9 +5,9 @@ import cookieParser from 'cookie-parser';
 import nunjucks from 'nunjucks';
 import bcrypt from 'bcryptjs';
 import path from 'path';
-import fs from 'fs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { dbService, type User, type Portfolio, type Alert } from './db.js';
 
 dotenv.config();
 
@@ -47,80 +47,6 @@ Date.prototype.strftime = function(fmt: string): string {
     .replace('%M', mm)
     .replace('%S', ss);
 };
-
-// ── PERSISTENT DATA STORAGE ──────────────────────────────────────────────────
-
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  password: string;
-  created_at: string;
-}
-
-interface Portfolio {
-  id: number;
-  user_id: number;
-  ticker: string;
-  shares: number;
-  buy_price: number;
-  added_at: string;
-}
-
-interface Alert {
-  id: number;
-  user_id: number;
-  ticker: string;
-  target_price: number;
-  direction: 'above' | 'below';
-  active: boolean;
-  created_at: string;
-}
-
-interface DatabaseSchema {
-  users: User[];
-  portfolios: Portfolio[];
-  alerts: Alert[];
-  nextUserId: number;
-  nextPortfolioId: number;
-  nextAlertId: number;
-}
-
-const DATA_DIR = path.join(__dirname, 'data');
-const DB_FILE = path.join(DATA_DIR, 'marketsync.json');
-
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-function loadDb(): DatabaseSchema {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const content = fs.readFileSync(DB_FILE, 'utf-8');
-      return JSON.parse(content);
-    }
-  } catch (err) {
-    console.error('Error loading database file:', err);
-  }
-  const initial: DatabaseSchema = {
-    users: [],
-    portfolios: [],
-    alerts: [],
-    nextUserId: 1,
-    nextPortfolioId: 1,
-    nextAlertId: 1
-  };
-  saveDb(initial);
-  return initial;
-}
-
-function saveDb(db: DatabaseSchema): void {
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Error saving database file:', err);
-  }
-}
 
 // ── AFRICAN STOCK EXCHANGES & YAHOO FINANCE DATA ──────────────────────────────
 
@@ -590,22 +516,16 @@ async function getAiAnalysis(ticker: string, name: string, price: number, change
 // Check active alerts periodically
 async function checkAlerts() {
   try {
-    const db = loadDb();
-    let updated = false;
-    for (const alert of db.alerts) {
-      if (!alert.active) continue;
+    const alerts = await dbService.getActiveAlerts();
+    for (const alert of alerts) {
       const stock = await getStockData(alert.ticker);
       if (!stock || !stock.price) continue;
       const triggered =
         (alert.direction === 'above' && stock.price >= alert.target_price) ||
         (alert.direction === 'below' && stock.price <= alert.target_price);
       if (triggered) {
-        alert.active = false;
-        updated = true;
+        console.log(`[Alert] ${alert.ticker} triggered at ${stock.price} (target: ${alert.target_price})`);
       }
-    }
-    if (updated) {
-      saveDb(db);
     }
   } catch (err) {
     console.error('Error checking alerts:', err);
@@ -743,10 +663,9 @@ env.addFilter('tojson', (val: any) => JSON.stringify(val));
 env.addFilter('upper', (val: any) => String(val ?? '').toUpperCase());
 
 // Attach current user & flash retriever per request
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const db = loadDb();
+app.use(async (req: Request, res: Response, next: NextFunction) => {
   const userId = req.session.userId;
-  const user = userId ? db.users.find(u => u.id === userId) : null;
+  const user = userId ? await dbService.findUserById(userId) : null;
 
   const currentUser = user
     ? {
@@ -865,14 +784,12 @@ app.get('/stock/:ticker', async (req: Request, res: Response) => {
   let userAlerts: Alert[] = [];
 
   if (req.session.userId) {
-    const db = loadDb();
-    inPortfolio = db.portfolios.some(p => p.user_id === req.session.userId && p.ticker === ticker);
-    userAlerts = db.alerts
-      .filter(a => a.user_id === req.session.userId && a.ticker === ticker)
-      .map(a => ({
-        ...a,
-        created_at: new Date(a.created_at) as any
-      }));
+    inPortfolio = await dbService.isTickerInPortfolio(req.session.userId, ticker);
+    const alerts = await dbService.getAlertsForTicker(req.session.userId, ticker);
+    userAlerts = alerts.map(a => ({
+      ...a,
+      created_at: new Date(a.created_at) as any
+    }));
   }
 
   res.render('stock.html', {
@@ -888,8 +805,7 @@ app.get('/stock/:ticker', async (req: Request, res: Response) => {
 });
 
 app.get('/portfolio', requireLogin, async (req: Request, res: Response) => {
-  const db = loadDb();
-  const entries = db.portfolios.filter(p => p.user_id === req.session.userId);
+  const entries = await dbService.getPortfolios(req.session.userId!);
 
   const holdings = [];
   let totalValue = 0;
@@ -950,17 +866,12 @@ app.post('/portfolio/add', requireLogin, async (req: Request, res: Response) => 
   }
 
   try {
-    const db = loadDb();
-    const newEntry: Portfolio = {
-      id: db.nextPortfolioId++,
+    await dbService.addPortfolio({
       user_id: req.session.userId!,
       ticker,
       shares,
-      buy_price: buyPrice,
-      added_at: new Date().toISOString()
-    };
-    db.portfolios.push(newEntry);
-    saveDb(db);
+      buy_price: buyPrice
+    });
     flash(req, `${ticker} added to portfolio!`, 'success');
   } catch (err: any) {
     flash(req, `Error adding ${ticker}: ${err.message}`, 'danger');
@@ -969,36 +880,30 @@ app.post('/portfolio/add', requireLogin, async (req: Request, res: Response) => 
   res.redirect('/portfolio');
 });
 
-app.post('/portfolio/delete/:entryId', requireLogin, (req: Request, res: Response) => {
+app.post('/portfolio/delete/:entryId', requireLogin, async (req: Request, res: Response) => {
   const entryId = parseInt(req.params.entryId, 10);
-  const db = loadDb();
-  const index = db.portfolios.findIndex(p => p.id === entryId);
+  const removed = await dbService.deletePortfolio(entryId, req.session.userId!);
 
-  if (index === -1 || db.portfolios[index].user_id !== req.session.userId) {
+  if (!removed) {
     flash(req, 'Unauthorized or entry not found.', 'danger');
     return res.redirect('/portfolio');
   }
 
-  const [removed] = db.portfolios.splice(index, 1);
-  saveDb(db);
   flash(req, `${removed.ticker} removed from portfolio.`, 'success');
   res.redirect('/portfolio');
 });
 
-app.get('/alerts', requireLogin, (req: Request, res: Response) => {
-  const db = loadDb();
-  const userAlerts = db.alerts
-    .filter(a => a.user_id === req.session.userId)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .map(a => ({
-      ...a,
-      created_at: new Date(a.created_at) as any
-    }));
+app.get('/alerts', requireLogin, async (req: Request, res: Response) => {
+  const alerts = await dbService.getAlerts(req.session.userId!);
+  const userAlerts = alerts.map(a => ({
+    ...a,
+    created_at: new Date(a.created_at) as any
+  }));
 
   res.render('alerts.html', { alerts: userAlerts });
 });
 
-app.post('/alerts/add', requireLogin, (req: Request, res: Response) => {
+app.post('/alerts/add', requireLogin, async (req: Request, res: Response) => {
   const ticker = String(req.body.ticker || '').trim().toUpperCase();
   const targetPrice = parseFloat(req.body.target_price);
   const direction = String(req.body.direction || '').toLowerCase();
@@ -1009,18 +914,12 @@ app.post('/alerts/add', requireLogin, (req: Request, res: Response) => {
   }
 
   try {
-    const db = loadDb();
-    const newAlert: Alert = {
-      id: db.nextAlertId++,
+    await dbService.addAlert({
       user_id: req.session.userId!,
       ticker,
       target_price: targetPrice,
-      direction: direction as 'above' | 'below',
-      active: true,
-      created_at: new Date().toISOString()
-    };
-    db.alerts.push(newAlert);
-    saveDb(db);
+      direction: direction as 'above' | 'below'
+    });
     flash(req, `Alert set for ${ticker}!`, 'success');
   } catch (err: any) {
     flash(req, `Error setting alert: ${err.message}`, 'danger');
@@ -1029,18 +928,15 @@ app.post('/alerts/add', requireLogin, (req: Request, res: Response) => {
   res.redirect('/alerts');
 });
 
-app.post('/alerts/delete/:alertId', requireLogin, (req: Request, res: Response) => {
+app.post('/alerts/delete/:alertId', requireLogin, async (req: Request, res: Response) => {
   const alertId = parseInt(req.params.alertId, 10);
-  const db = loadDb();
-  const index = db.alerts.findIndex(a => a.id === alertId);
+  const deleted = await dbService.deleteAlert(alertId, req.session.userId!);
 
-  if (index === -1 || db.alerts[index].user_id !== req.session.userId) {
+  if (!deleted) {
     flash(req, 'Unauthorized or alert not found.', 'danger');
     return res.redirect('/alerts');
   }
 
-  db.alerts.splice(index, 1);
-  saveDb(db);
   flash(req, 'Alert deleted.', 'success');
   res.redirect('/alerts');
 });
@@ -1050,7 +946,7 @@ app.get('/register', (req: Request, res: Response) => {
   res.render('register.html');
 });
 
-app.post('/register', (req: Request, res: Response) => {
+app.post('/register', async (req: Request, res: Response) => {
   if (req.session.userId) return res.redirect('/');
 
   const username = String(req.body.username || '').trim();
@@ -1058,19 +954,19 @@ app.post('/register', (req: Request, res: Response) => {
   const password = String(req.body.password || '');
   const confirmPassword = String(req.body.confirm_password || '');
 
-  const db = loadDb();
-
   if (!username || !email || !password) {
     flash(req, 'All fields are required.', 'danger');
     return res.render('register.html');
   }
 
-  if (db.users.some(u => u.email === email)) {
+  const existingEmail = await dbService.findUserByEmail(email);
+  if (existingEmail) {
     flash(req, 'Email already registered.', 'danger');
     return res.render('register.html');
   }
 
-  if (db.users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+  const existingUsername = await dbService.findUserByUsername(username);
+  if (existingUsername) {
     flash(req, 'Username already taken.', 'danger');
     return res.render('register.html');
   }
@@ -1088,23 +984,23 @@ app.post('/register', (req: Request, res: Response) => {
   const salt = bcrypt.genSaltSync(10);
   const hashedPassword = bcrypt.hashSync(password, salt);
 
-  const newUser: User = {
-    id: db.nextUserId++,
-    username,
-    email,
-    password: hashedPassword,
-    created_at: new Date().toISOString()
-  };
+  try {
+    const newUser = await dbService.createUser({
+      username,
+      email,
+      password: hashedPassword
+    });
 
-  db.users.push(newUser);
-  saveDb(db);
-
-  req.session.userId = newUser.id;
-  flash(req, `Welcome to MarketSync, ${username}!`, 'success');
-  req.session.save((saveErr) => {
-    if (saveErr) console.error('[Register] Session save error:', saveErr);
-    res.redirect('/');
-  });
+    req.session.userId = newUser.id;
+    flash(req, `Welcome to MarketSync, ${username}!`, 'success');
+    req.session.save((saveErr) => {
+      if (saveErr) console.error('[Register] Session save error:', saveErr);
+      res.redirect('/');
+    });
+  } catch (err: any) {
+    flash(req, `Registration error: ${err.message}`, 'danger');
+    res.render('register.html');
+  }
 });
 
 app.get('/login', (req: Request, res: Response) => {
@@ -1112,7 +1008,7 @@ app.get('/login', (req: Request, res: Response) => {
   res.render('login.html');
 });
 
-app.post('/login', (req: Request, res: Response) => {
+app.post('/login', async (req: Request, res: Response) => {
   if (req.session.userId) return res.redirect('/');
 
   const loginId = String(req.body.email || '').trim().toLowerCase();
@@ -1123,10 +1019,7 @@ app.post('/login', (req: Request, res: Response) => {
     return res.render('login.html');
   }
 
-  const db = loadDb();
-  const user = db.users.find(
-    u => u.email.toLowerCase() === loginId || u.username.toLowerCase() === loginId
-  );
+  const user = await dbService.findUserByLogin(loginId);
 
   if (user && bcrypt.compareSync(password, user.password)) {
     req.session.userId = user.id;
@@ -1150,18 +1043,14 @@ app.get('/logout', (req: Request, res: Response) => {
   });
 });
 
-app.get('/health', (req: Request, res: Response) => {
-  const db = loadDb();
+app.get('/health', async (_req: Request, res: Response) => {
+  const dbStatus = dbService.getStatus();
+  const counts = await dbService.getRecordCounts();
   res.json({
     status: 'healthy',
     database: {
-      connected: true,
-      type: 'json_store',
-      records: {
-        users: db.users.length,
-        portfolios: db.portfolios.length,
-        alerts: db.alerts.length
-      }
+      ...dbStatus,
+      records: counts
     },
     environment: {
       groq_configured: Boolean(process.env.GROQ_API_KEY)
@@ -1169,6 +1058,8 @@ app.get('/health', (req: Request, res: Response) => {
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`MarketSync running on port ${PORT}`);
+dbService.init().then(() => {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`MarketSync running on port ${PORT}`);
+  });
 });
