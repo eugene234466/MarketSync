@@ -86,7 +86,7 @@
                         </div>
                     </div>
                     <div class="pt-2 border-top border-secondary d-flex justify-content-between align-items-center">
-                        <span class="text-muted small">Vol: {{ stock.volume.toLocaleString() if stock.volume else 'Active' }}</span>
+                        <span class="text-muted small">Vol: {{ '{:,}'.format(stock.volume) if stock.volume else 'Active' }}</span>
                         <a href="{{ url_for('stock_detail', ticker=stock.symbol) }}" class="btn btn-sm btn-outline-success py-0 px-2">
                             View
                         </a>
