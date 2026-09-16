@@ -72,15 +72,18 @@
                            class="fw-bold text-success text-decoration-none">
                             {{ holding.ticker }}
                         </a>
+                        {% if holding.currency == 'GHS' %}
+                        <span class="badge bg-warning text-dark ms-1" style="font-size: 0.65rem;">GSE</span>
+                        {% endif %}
                     </td>
                     <td class="text-white">{{ holding.shares }}</td>
-                    <td class="text-white">${{ "%.2f"|format(holding.buy_price) }}</td>
-                    <td class="text-white">${{ "%.2f"|format(holding.current_price) }}</td>
-                    <td class="text-white">${{ "%.2f"|format(holding.current_value) }}</td>
+                    <td class="text-white">{{ holding.currency | currency_sym }}{{ "%.2f"|format(holding.buy_price) }}</td>
+                    <td class="text-white">{{ holding.currency | currency_sym }}{{ "%.2f"|format(holding.current_price) }}</td>
+                    <td class="text-white">{{ holding.currency | currency_sym }}{{ "%.2f"|format(holding.current_value) }}</td>
                     <td class="fw-semibold
                         {% if holding.gain_loss >= 0 %}text-success{% else %}text-danger{% endif %}">
                         {% if holding.gain_loss >= 0 %}+{% endif %}
-                        ${{ "%.2f"|format(holding.gain_loss) }}
+                        {{ holding.currency | currency_sym }}{{ "%.2f"|format(holding.gain_loss) }}
                     </td>
                     <td class="fw-semibold
                         {% if holding.gain_loss_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
@@ -116,7 +119,7 @@
                     <label class="form-label text-muted small">Ticker Symbol</label>
                     <input type="text" name="ticker"
                            class="form-control bg-dark text-white border-secondary"
-                           placeholder="e.g. AAPL" required>
+                           placeholder="e.g. MTNGH, AAPL, BTC-USD" required>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label text-muted small">Number of Shares</label>
@@ -125,10 +128,10 @@
                            placeholder="e.g. 10" step="any" min="0.0001" required>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label text-muted small">Buy Price per Share ($)</label>
+                    <label class="form-label text-muted small">Buy Price per Share</label>
                     <input type="number" name="buy_price"
                            class="form-control bg-dark text-white border-secondary"
-                           placeholder="e.g. 150.00" step="0.01" min="0.01" required>
+                           placeholder="e.g. 2.50" step="0.01" min="0.01" required>
                 </div>
                 <div class="col-md-2 d-flex align-items-end">
                     <button type="submit" class="btn btn-success w-100">

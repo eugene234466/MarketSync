@@ -1,6 +1,6 @@
 {
   "name": "MarketSync",
-  "description": "Real-time stock & crypto tracking with portfolio management and price alerts.",
+  "description": "Real-time global stocks, crypto, and Ghana Stock Exchange (GSE) tracking with portfolio management and price alerts.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

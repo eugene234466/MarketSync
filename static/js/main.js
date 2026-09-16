@@ -1,11 +1,56 @@
-// ── PWA SERVICE WORKER REGISTRATION ──────────────────────────────────────────
+// ── SERVICE WORKER PURGE & UNREGISTER ───────────────────────────────────────
 if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/sw.js')
-            .then(reg => console.log('SW registered:', reg.scope))
-            .catch(err => console.log('SW registration failed:', err));
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (const registration of registrations) {
+            registration.unregister();
+        }
     });
 }
+if ('caches' in window) {
+    caches.keys().then(names => {
+        for (const name of names) caches.delete(name);
+    });
+}
+
+// ── LOGOUT HELPERS & SESSION CLEANUP ─────────────────────────────────────────
+function purgeClientAuthData() {
+    // Expire cookies client-side
+    document.cookie = "marketsync_sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
+    document.cookie = "connect.sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;";
+    try {
+        sessionStorage.clear();
+        localStorage.clear();
+    } catch (_) {}
+    if ('caches' in window) {
+        caches.keys().then(names => {
+            for (const name of names) caches.delete(name);
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Intercept any logout button, link, or form submission
+    const logoutTriggers = document.querySelectorAll('.logout-trigger, [href*="/logout"], form[action*="/logout"]');
+    logoutTriggers.forEach(trigger => {
+        trigger.addEventListener('click', () => {
+            purgeClientAuthData();
+        });
+    });
+
+    const logoutForms = document.querySelectorAll('form[action*="/logout"]');
+    logoutForms.forEach(form => {
+        form.addEventListener('submit', () => {
+            purgeClientAuthData();
+        });
+    });
+
+    // If redirected with ?logged_out=1, wipe state and remove query param from URL
+    if (window.location.search.includes('logged_out=1')) {
+        purgeClientAuthData();
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+    }
+});
 
 // ── ACTIVE NAV LINK HIGHLIGHT ─────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {

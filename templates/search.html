@@ -27,7 +27,7 @@
                         <p class="text-muted small text-uppercase mt-1">{{ result.name }}</p>
                     </div>
                     <div class="text-end">
-                        <p class="fw-bold text-white fs-5 mb-0">${{ result.price }}</p>
+                        <p class="fw-bold text-white fs-5 mb-0">{{ result.currency | currency_sym }}{{ result.price }}</p>
                         <p class="small fw-semibold mb-0
                             {% if result.change_percent >= 0 %}text-success{% else %}text-danger{% endif %}">
                             {% if result.change_percent >= 0 %}▲{% else %}▼{% endif %}
@@ -36,11 +36,12 @@
                     </div>
                 </div>
 
-                <div class="d-flex gap-2 mt-3">
-                    <span class="badge bg-secondary">Vol: {{ '{:,}'.format(result.volume) if result.volume else 'N/A' }}</span>
-                    <span class="badge bg-secondary">
-                        MCap: {{ '${:,.0f}B'.format(result.market_cap / 1e9) if result.market_cap else 'N/A' }}
-                    </span>
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <span class="badge bg-secondary font-monospace">{{ result.exchange or 'Market' }}</span>
+                    {% if result.currency == 'GHS' %}
+                    <span class="badge bg-warning text-dark fw-bold">GSE Ghana</span>
+                    {% endif %}
+                    <span class="badge bg-dark border border-secondary text-muted">Vol: {{ '{:,}'.format(result.volume) if result.volume else 'Active' }}</span>
                 </div>
             </div>
             <div class="card-footer bg-dark border-secondary">

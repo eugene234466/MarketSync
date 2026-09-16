@@ -5,13 +5,21 @@
 <!-- TOP ROW -->
 <div class="row mb-4 align-items-center">
     <div class="col-md-8">
-        <h1 class="display-4 fw-bold text-white mb-0">{{ data.symbol }}</h1>
-        <p class="text-muted fs-5">{{ data.name }}</p>
-        <h2 class="fw-semibold text-white">${{ data.price }}</h2>
-        <span class="badge fs-6 {% if data.change_percent >= 0 %}bg-success{% else %}bg-danger{% endif %}">
-            {% if data.change_percent >= 0 %}▲{% else %}▼{% endif %}
-            ${{ data.change }} ({{ data.change_percent }}%)
-        </span>
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <h1 class="display-4 fw-bold text-white mb-0">{{ data.symbol }}</h1>
+            <span class="badge bg-secondary font-monospace">{{ data.exchange or 'Market' }}</span>
+            {% if data.currency == 'GHS' %}
+            <span class="badge bg-warning text-dark fw-bold">Ghana Stock Exchange</span>
+            {% endif %}
+        </div>
+        <p class="text-muted fs-5 mb-2">{{ data.name }}</p>
+        <div class="d-flex align-items-baseline gap-3">
+            <h2 class="fw-semibold text-white mb-0">{{ data.currency | currency_sym }}{{ data.price }}</h2>
+            <span class="badge fs-6 {% if data.change_percent >= 0 %}bg-success text-dark{% else %}bg-danger text-white{% endif %} fw-bold">
+                {% if data.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}
+                {{ data.currency | currency_sym }}{{ data.change }} ({{ data.change_percent }}%)
+            </span>
+        </div>
     </div>
 
     <div class="col-md-4 text-md-end mt-3 mt-md-0">
@@ -132,7 +140,7 @@
                                step="any" min="0.0001" placeholder="e.g. 10" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-muted">Buy Price per Share ($)</label>
+                        <label class="form-label text-muted">Buy Price per Share ({{ data.currency | currency_sym }})</label>
                         <input type="number" name="buy_price" class="form-control bg-dark text-white border-secondary"
                                step="0.01" min="0.01" value="{{ data.price }}" required>
                     </div>
@@ -164,7 +172,7 @@
                 <div class="modal-body">
                     <input type="hidden" name="ticker" value="{{ data.symbol }}">
                     <div class="mb-3">
-                        <label class="form-label text-muted">Target Price ($)</label>
+                        <label class="form-label text-muted">Target Price ({{ data.currency | currency_sym }})</label>
                         <input type="number" name="target_price"
                                class="form-control bg-dark text-white border-secondary"
                                step="0.01" min="0.01"
@@ -203,6 +211,7 @@
     var symbol = {{ data.symbol | tojson }};
     var isPositive = {{ (data.change_percent >= 0) | tojson }};
     var lineColor = isPositive ? '#00ff88' : '#ff3355';
+    var currency = {{ (data.currency or 'USD') | tojson }};
 
     var trace = {
         x: dates,
@@ -227,7 +236,7 @@
             zerolinecolor: '#333333'
         },
         yaxis: {
-            title: 'Price (USD)',
+            title: 'Price (' + currency + ')',
             gridcolor: '#222222',
             zerolinecolor: '#333333'
         }

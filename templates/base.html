@@ -35,9 +35,9 @@
     <link rel="apple-touch-startup-image" href="{{ url_for('static', filename='images/logo.png') }}">
     
     <!-- Description & Open Graph -->
-    <meta name="description" content="Real-time stock & crypto tracking with portfolio management and price alerts.">
+    <meta name="description" content="Real-time global stocks, crypto, and Ghana Stock Exchange (GSE) tracking with portfolio management and price alerts.">
     <meta property="og:title" content="MarketSync">
-    <meta property="og:description" content="Real-time stock & crypto tracking with portfolio management and price alerts.">
+    <meta property="og:description" content="Real-time global stocks, crypto, and Ghana Stock Exchange (GSE) tracking with portfolio management and price alerts.">
     
     <!-- Windows / Android -->
     <meta name="msapplication-TileColor" content="#0d0f1a">
@@ -109,21 +109,25 @@
                                 </li>
                                 <li><hr class="dropdown-divider border-secondary"></li>
                                 <li>
-                                    <a class="dropdown-item text-danger fw-semibold"
-                                       id="dropdown_logout_btn"
-                                       href="{{ url_for('logout') }}">
-                                        <i class="fa-solid fa-right-from-bracket me-2"></i>Logout
-                                    </a>
+                                    <form action="{{ url_for('logout') }}" method="POST" class="m-0 p-0">
+                                        <button type="submit"
+                                                class="dropdown-item text-danger fw-semibold logout-trigger"
+                                                id="dropdown_logout_btn">
+                                            <i class="fa-solid fa-right-from-bracket me-2"></i>Logout
+                                        </button>
+                                    </form>
                                 </li>
                             </ul>
                         </li>
-                        <li class="nav-item ms-lg-2">
-                            <a class="btn btn-outline-danger btn-sm fw-semibold"
-                               id="navbar_logout_btn"
-                               href="{{ url_for('logout') }}"
-                               title="Sign out of your account">
-                                <i class="fa-solid fa-right-from-bracket me-1"></i>Logout
-                            </a>
+                        <li class="nav-item ms-lg-2 mt-2 mt-lg-0">
+                            <form action="{{ url_for('logout') }}" method="POST" class="d-inline m-0 p-0">
+                                <button type="submit"
+                                        class="btn btn-outline-danger btn-sm fw-semibold logout-trigger w-100 text-start text-lg-center"
+                                        id="navbar_logout_btn"
+                                        title="Sign out of your account">
+                                    <i class="fa-solid fa-right-from-bracket me-1"></i>Logout
+                                </button>
+                            </form>
                         </li>
                     {% else %}
                         <li class="nav-item">
