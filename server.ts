@@ -550,14 +550,19 @@ declare module 'express-session' {
   }
 }
 
+// Trust proxy headers for Cloud Run / reverse proxies so secure cookies and protocol are correctly identified
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Robust session configuration for iframe and standalone environments
+const isProduction = process.env.NODE_ENV === 'production';
 app.use(
   session({
-    secret: process.env.SECRET_KEY || 'dev_key_123',
+    name: 'marketsync_sid',
+    secret: process.env.SECRET_KEY || 'marketsync_secret_production_key_2026',
     resave: false,
     saveUninitialized: false,
     proxy: true,
@@ -1005,43 +1010,60 @@ app.post('/register', async (req: Request, res: Response) => {
 
 app.get('/login', (req: Request, res: Response) => {
   if (req.session.userId) return res.redirect('/');
-  res.render('login.html');
+  const nextParam = String(req.query.next || '');
+  res.render('login.html', { next: nextParam });
 });
 
 app.post('/login', async (req: Request, res: Response) => {
   if (req.session.userId) return res.redirect('/');
 
-  const loginId = String(req.body.email || '').trim().toLowerCase();
+  const loginId = String(req.body.email || req.body.username || req.body.login || '').trim();
   const password = String(req.body.password || '');
+  const nextPage = String(req.body.next || req.query.next || '');
 
   if (!loginId || !password) {
     flash(req, 'Please enter both your email/username and password.', 'danger');
-    return res.render('login.html');
+    return res.render('login.html', { next: nextPage });
   }
 
-  const user = await dbService.findUserByLogin(loginId);
+  try {
+    const user = await dbService.findUserByLogin(loginId);
 
-  if (user && bcrypt.compareSync(password, user.password)) {
-    req.session.userId = user.id;
-    flash(req, `Welcome back, ${user.username}!`, 'success');
-    const nextPage = String(req.query.next || '');
-    return req.session.save((saveErr) => {
-      if (saveErr) console.error('[Login] Session save error:', saveErr);
-      res.redirect(nextPage.startsWith('/') ? nextPage : '/');
-    });
+    if (user && bcrypt.compareSync(password, user.password)) {
+      req.session.userId = user.id;
+      flash(req, `Welcome back, ${user.username}!`, 'success');
+
+      // Safely validate redirect target
+      const safeNext = nextPage.startsWith('/') && !nextPage.startsWith('//') ? nextPage : '/';
+
+      return req.session.save((saveErr) => {
+        if (saveErr) console.error('[Login] Session save error:', saveErr);
+        res.redirect(safeNext);
+      });
+    }
+  } catch (err: any) {
+    console.error('[Login] Error validating credentials:', err);
   }
 
   flash(req, 'Invalid email/username or password.', 'danger');
-  res.render('login.html');
+  res.render('login.html', { next: nextPage });
 });
 
-app.get('/logout', (req: Request, res: Response) => {
+function handleLogout(req: Request, res: Response) {
+  // Clear user ID first
+  req.session.userId = undefined;
+  // Destroy session store record
   req.session.destroy((destroyErr) => {
     if (destroyErr) console.error('[Logout] Session destroy error:', destroyErr);
+    // Clear both possible cookie names
+    res.clearCookie('marketsync_sid', { path: '/' });
     res.clearCookie('connect.sid', { path: '/' });
     res.redirect('/');
   });
-});
+}
+
+app.get('/logout', handleLogout);
+app.post('/logout', handleLogout);
 
 app.get('/health', async (_req: Request, res: Response) => {
   const dbStatus = dbService.getStatus();
