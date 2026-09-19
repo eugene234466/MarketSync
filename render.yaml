@@ -3,7 +3,7 @@ services:
     name: marketsync
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn --workers=2 --threads=4 --timeout=120 --keep-alive=5 app:app
     healthCheckPath: /health
     plan: free
     envVars:

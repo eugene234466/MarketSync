@@ -255,6 +255,17 @@ HEADERS = {
 _african_cache = {}
 CACHE_TTL = timedelta(minutes=15)
 
+_offline_hosts = {}
+
+def _is_host_offline(host):
+    exp = _offline_hosts.get(host)
+    if exp and datetime.utcnow() < exp:
+        return True
+    return False
+
+def _mark_host_offline(host, minutes=30):
+    _offline_hosts[host] = datetime.utcnow() + timedelta(minutes=minutes)
+
 def _get_cached(ticker):
     """Return cached data if still fresh."""
     if ticker in _african_cache:
@@ -278,8 +289,8 @@ def _parse_number(text):
 
 def get_gse_stock(ticker):
     """
-    Fetch GSE stock via dev.kwayisi.org free JSON API with fallback to local GSE catalog.
-    Uses 15-minute cache to avoid repeated slow calls.
+    Fetch GSE stock. Prioritizes local GSE catalog for instant response without network blocking,
+    falling back to cached data or fast external API lookup.
     """
     clean_ticker = normalize_gse_ticker(ticker)
     cache_key = f"GSE:{clean_ticker}"
@@ -289,38 +300,7 @@ def get_gse_stock(ticker):
     if cached:
         return cached
 
-    # Attempt live API
-    try:
-        url = f"https://dev.kwayisi.org/apis/gse/equities/{clean_ticker}"
-        res = requests.get(url, headers=HEADERS, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            price = _parse_number(data.get('price', 0)) or 0
-            change_pct = _parse_number(data.get('change', 0)) or 0
-            change = round(price * change_pct / 100, 4)
-            prev = round(price - change, 4) if change else price
-            result = {
-                'symbol': clean_ticker,
-                'name': data.get('name', clean_ticker),
-                'price': round(price, 4),
-                'prev_close': round(prev, 4),
-                'change': round(change, 4),
-                'change_percent': round(change_pct, 2),
-                'volume': data.get('volume'),
-                'market_cap': None,
-                'high_52': None,
-                'low_52': None,
-                'pe_ratio': None,
-                'dividend': None,
-                'currency': 'GHS',
-                'exchange': 'Ghana Stock Exchange'
-            }
-            _set_cached(cache_key, result)
-            return result
-    except Exception as e:
-        print(f"[GSE] Network query failed for {clean_ticker}: {e}")
-
-    # Fallback to catalog data so GSE stocks ALWAYS resolve
+    # Instant return if in curated catalog (0ms latency, zero timeout risk)
     catalog_item = GSE_CATALOG.get(clean_ticker)
     if catalog_item:
         price = catalog_item['price']
@@ -346,19 +326,55 @@ def get_gse_stock(ticker):
         _set_cached(cache_key, result)
         return result
 
+    # Only attempt live external API for unknown tickers NOT in catalog if host is online
+    if not _is_host_offline('dev.kwayisi.org'):
+        try:
+            url = f"https://dev.kwayisi.org/apis/gse/equities/{clean_ticker}"
+            res = requests.get(url, headers=HEADERS, timeout=(1.0, 1.5))
+            if res.status_code == 200:
+                data = res.json()
+                price = _parse_number(data.get('price', 0)) or 0
+                change_pct = _parse_number(data.get('change', 0)) or 0
+                change = round(price * change_pct / 100, 4)
+                prev = round(price - change, 4) if change else price
+                result = {
+                    'symbol': clean_ticker,
+                    'name': data.get('name', clean_ticker),
+                    'price': round(price, 4),
+                    'prev_close': round(prev, 4),
+                    'change': round(change, 4),
+                    'change_percent': round(change_pct, 2),
+                    'volume': data.get('volume'),
+                    'market_cap': None,
+                    'high_52': None,
+                    'low_52': None,
+                    'pe_ratio': None,
+                    'dividend': None,
+                    'currency': 'GHS',
+                    'exchange': 'Ghana Stock Exchange'
+                }
+                _set_cached(cache_key, result)
+                return result
+        except Exception as e:
+            print(f"[GSE] Network query failed for {clean_ticker}: {e}")
+            _mark_host_offline('dev.kwayisi.org', minutes=30)
+
     return None
 
 
 def get_african_stock_afx(ticker, exchange):
     """
     Scrape NGX or BRVM stock data from afx.kwayisi.org.
-    Uses 15-minute cache to avoid repeated slow scrape calls.
+    Uses 15-minute cache and circuit breaker to avoid blocking worker.
     """
     cache_key = f"{exchange.upper()}:{ticker.upper()}"
 
     cached = _get_cached(cache_key)
     if cached:
         return cached
+
+    if _is_host_offline('afx.kwayisi.org'):
+        return None
 
     try:
         ex_slug = {'NGX': 'ngx', 'BRVM': 'brvm'}.get(exchange.upper())
@@ -367,7 +383,7 @@ def get_african_stock_afx(ticker, exchange):
 
         ticker_lower = ticker.lower()
         url = f"https://afx.kwayisi.org/{ex_slug}/{ticker_lower}.html"
-        res = requests.get(url, headers=HEADERS, timeout=6)
+        res = requests.get(url, headers=HEADERS, timeout=(1.5, 2.0))
         if res.status_code != 200:
             print(f"[AFX] {url} returned {res.status_code}")
             return None
@@ -433,12 +449,9 @@ def get_african_stock_afx(ticker, exchange):
         }
         _set_cached(cache_key, result)
         return result
-
-    except requests.Timeout:
-        print(f"[AFX] Timeout fetching {ticker} on {exchange}")
-        return None
     except Exception as e:
-        print(f"[AFX] Error fetching {ticker} on {exchange}: {e}")
+        print(f"[AFX] Network query failed for {ticker} on {exchange}: {e}")
+        _mark_host_offline('afx.kwayisi.org', minutes=30)
         return None
 
 
