@@ -260,6 +260,17 @@ def get_stock_data_service(ticker):
         return None
 
     raw_ticker = ticker.strip().upper()
+
+    # Reject non-ticker keywords that are countries, search filters, or navigation terms
+    # to avoid unnecessary Yahoo Finance queries and 401 crumb / symbol delisted errors.
+    NON_TICKERS = {
+        'AFRICA', 'AFRICAN', 'GHANA', 'NIGERIA', 'KENYA', 'SOUTH AFRICA',
+        'EGYPT', 'BRVM', 'MARKET', 'ALL', 'PORTFOLIO', 'SEARCH', 'INDEX',
+        'INDICES', 'HOME', 'LOGOUT', 'LOGIN', 'REGISTER', 'WATCHLIST'
+    }
+    if raw_ticker in NON_TICKERS or len(raw_ticker) > 14:
+        return None
+
     yf_ticker = INDEX_ALIASES.get(raw_ticker, raw_ticker)
 
     # Check cache first
@@ -347,35 +358,43 @@ def get_stock_data_service(ticker):
             return crypto_res
 
     # Tier 4: Native yfinance fallback (with custom headers)
-    try:
-        import yfinance as yf
-        stock = yf.Ticker(yf_ticker)
-        info = getattr(stock, 'fast_info', None)
-        if info and hasattr(info, 'last_price') and info.last_price:
-            price = info.last_price
-            prev_close = getattr(info, 'previous_close', price) or price
-            change = price - prev_close
-            change_percent = (change / prev_close * 100) if prev_close else 0
-            result = {
-                'symbol': yf_ticker.upper(),
-                'name': getattr(stock, 'ticker', yf_ticker),
-                'price': round(price, 4),
-                'prev_close': round(prev_close, 4),
-                'change': round(change, 4),
-                'change_percent': round(change_percent, 2),
-                'volume': None,
-                'market_cap': None,
-                'high_52': getattr(info, 'year_high', None),
-                'low_52': getattr(info, 'year_low', None),
-                'pe_ratio': None,
-                'dividend': None,
-                'currency': getattr(info, 'currency', 'USD'),
-                'exchange': 'Yahoo Finance'
-            }
-            _save_to_cache(_quote_cache, yf_ticker, result)
-            return result
-    except Exception:
-        pass
+    if yf_ticker.replace('.', '').replace('-', '').replace('^', '').replace('=', '').isalnum():
+        try:
+            import yfinance as yf
+            import logging
+            yf_logger = logging.getLogger('yfinance')
+            prev_level = yf_logger.level
+            yf_logger.setLevel(logging.CRITICAL)
+            try:
+                stock = yf.Ticker(yf_ticker)
+                info = getattr(stock, 'fast_info', None)
+                if info and hasattr(info, 'last_price') and info.last_price:
+                    price = info.last_price
+                    prev_close = getattr(info, 'previous_close', price) or price
+                    change = price - prev_close
+                    change_percent = (change / prev_close * 100) if prev_close else 0
+                    result = {
+                        'symbol': yf_ticker.upper(),
+                        'name': getattr(stock, 'ticker', yf_ticker),
+                        'price': round(price, 4),
+                        'prev_close': round(prev_close, 4),
+                        'change': round(change, 4),
+                        'change_percent': round(change_percent, 2),
+                        'volume': None,
+                        'market_cap': None,
+                        'high_52': getattr(info, 'year_high', None),
+                        'low_52': getattr(info, 'year_low', None),
+                        'pe_ratio': None,
+                        'dividend': None,
+                        'currency': getattr(info, 'currency', 'USD'),
+                        'exchange': 'Yahoo Finance'
+                    }
+                    _save_to_cache(_quote_cache, yf_ticker, result)
+                    return result
+            finally:
+                yf_logger.setLevel(prev_level)
+        except Exception:
+            pass
 
     return None
 
