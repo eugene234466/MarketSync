@@ -1754,21 +1754,25 @@ async function getNews(ticker: string) {
 function cleanAnalysisText(text: string): string {
   if (!text) return '';
   return text
-    // Remove conversational AI intros/greetings
-    .replace(/^(as an ai|as an ai language model|as a financial analyst ai|here is a brief analysis[^:]*:?|here is an analysis[^:]*:?|certainly!?:?|sure!?:?)\s*/i, '')
-    // Remove markdown headers like ### or ##
-    .replace(/^#+\s+/gm, '')
-    // Remove bold and italic markers
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
-    // Remove inline code ticks
-    .replace(/`([^`]+)`/g, '$1')
-    // Clean bullet list symbols
-    .replace(/^\s*[-*•]\s+/gm, '')
+    // Strip markdown headers (#, ##, ###)
+    .replace(/^#+\s*/gm, '')
+    // Remove introductory headers / conversational preambles
+    .replace(/^(executive summary|market analysis|overview|summary|analysis|market overview)\b[^\n\.]*[\n\.:]*/i, '')
+    .replace(/^(as an ai|as an ai language model|as a financial analyst ai|as an institutional analyst|here is (a|an)?\s*[^:\n]*:?|certainly!?:?|sure!?:?|based on (the|latest)[^:\n]*:?|in this analysis[^:\n]*:?|according to the[^:\n]*:?)\s*/i, '')
+    // Strip all markdown formatting characters: *, _, `, ~, >, |, \
+    .replace(/[*_`~>|\\]/g, '')
+    // Remove AI section headers / label markers
+    .replace(/(^|\n|\.\s+)(market trend|current trend|price trend|price action|price movement|key price factors|price factors|key factors|key drivers|operational drivers|macroeconomic drivers|valuation drivers|valuation|short-term outlook|short term outlook|near-term outlook|outlook|catalysts|risk factors|technical analysis|fundamental analysis|summary|executive summary|overview|conclusion|analysis|recommendation|takeaways|takeaway|support|resistance|support & resistance|target price|price target):\s*/gi, '$1')
+    // Strip bullet points and numbered list indicators
+    .replace(/(^|\n|\.\s+)[-•–—+*▪▫]\s+/g, '$1')
+    .replace(/(^|\n|\.\s+)\d+[\.)]\s+/g, '$1')
     // Remove common AI disclaimer footers
-    .replace(/(note:\s*(this is an ai|not financial advice|ai-generated|for informational purposes only).*$)/i, '')
+    .replace(/(note|disclaimer):\s*(this is an ai|not financial advice|ai-generated|for informational purposes only).*$/i, '')
+    // Normalize punctuation, dots and whitespaces
+    .replace(/\.{2,}/g, '.')
+    .replace(/\s+\./g, '.')
+    .replace(/^\s*[\.\s]+/, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -1808,12 +1812,12 @@ async function getAiAnalysis(ticker: string, name: string, price: number, change
     ? ` Focus on ${country} macroeconomic dynamics, central bank monetary policy, local currency trends, and sector liquidity on the ${exchange}.`
     : '';
 
-  const systemInstruction = 'You are a professional financial market analyst. Be factual, concise, and write in clean plain text paragraphs without asterisks, markdown syntax, bullet points, headers, or AI self-references.';
+  const systemInstruction = 'You are a senior institutional equity research analyst. Write clean, continuous executive summary prose without asterisks, markdown syntax, bullet points, headers, section labels (such as Trend:, Drivers:, Outlook:), or AI self-references.';
 
   // If GROQ_API_KEY is available, use Groq
   if (process.env.GROQ_API_KEY) {
     try {
-      const prompt = `You are a financial analyst.${macroContext} Give a brief market analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Change today: ${changePct.toFixed(2)}%. Summarize current trend, key price factors, and short-term outlook in seamless plain text prose without any asterisks, markdown, bullets, or headers. Keep it under 140 words.`;
+      const prompt = `You are an institutional financial analyst.${macroContext} Provide a brief executive analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Session change: ${changePct.toFixed(2)}%. Write 2 to 3 fluid sentences of continuous prose summarizing price momentum, valuation drivers, and short-term expectations. Do NOT use bullet points, bold text, markdown asterisks, colons, section headers, or conversational intros. Keep it under 100 words.`;
       
       const callGroq = async (modelName: string) => {
         return fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -1835,10 +1839,13 @@ async function getAiAnalysis(ticker: string, name: string, price: number, change
         });
       };
 
-      // Try openai/gpt-oss-120b first, with fallback to llama-3.3-70b-versatile
+      // Try openai/gpt-oss-120b first, with fallback to openai/gpt-oss-20b or qwen/qwen3.8-27b
       let res = await callGroq('openai/gpt-oss-120b');
       if (!res.ok) {
-        res = await callGroq('llama-3.3-70b-versatile');
+        res = await callGroq('openai/gpt-oss-20b');
+      }
+      if (!res.ok) {
+        res = await callGroq('qwen/qwen3.8-27b');
       }
 
       if (res.ok) {
@@ -1851,11 +1858,11 @@ async function getAiAnalysis(ticker: string, name: string, price: number, change
     }
   }
 
-  // If GEMINI_API_KEY is available, use Gemini
+  // If GEMINI_API_KEY is available, use Gemini 3.6 Flash
   if (process.env.GEMINI_API_KEY) {
     try {
-      const prompt = `You are a professional financial analyst.${macroContext} Give a brief market analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Change today: ${changePct.toFixed(2)}%. Summarize current trend, key price factors, and short-term outlook in seamless plain text prose without any asterisks, markdown, bullets, or headers. Keep it under 140 words.`;
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      const prompt = `You are an institutional financial analyst.${macroContext} Provide a brief executive analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Session change: ${changePct.toFixed(2)}%. Write 2 to 3 fluid sentences of continuous prose summarizing price momentum, valuation drivers, and short-term expectations. Do NOT use bullet points, bold text, markdown asterisks, colons, section headers, or conversational intros. Keep it under 100 words.`;
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1877,7 +1884,7 @@ async function getAiAnalysis(ticker: string, name: string, price: number, change
   // Graceful deterministic financial summary when external API is not configured
   const direction = changePct >= 0 ? 'bullish momentum' : 'bearish pressure';
   const sign = changePct >= 0 ? '+' : '';
-  const fallbackText = `${name} (${ticker}) is currently trading at ${currency} ${price.toLocaleString()}, reflecting ${direction} with a ${sign}${changePct.toFixed(2)}% session change. Trading volumes and market sentiment indicate active institutional participation and liquidity. Key drivers include macroeconomic updates, sector performance, and quarterly expectations. Short-term outlook remains sensitive to support levels and prevailing volatility.`;
+  const fallbackText = `${name} (${ticker}) is currently trading at ${currency} ${price.toLocaleString()}, reflecting ${direction} with a ${sign}${changePct.toFixed(2)}% session change. Trading volumes and market sentiment indicate active institutional participation and liquidity, supported by regional macroeconomic stability and earnings expectations. Short-term outlook remains sensitive to key technical support levels and prevailing sector volatility.`;
   return cleanAnalysisText(fallbackText);
 }
 

@@ -1284,14 +1284,36 @@ def get_news(ticker):
 def clean_analysis_text(text):
     if not text:
         return ""
-    # Strip markdown bold, italic, headings, backticks, bullet symbols
-    text = re.sub(r'[*_#`~]', '', text)
-    text = re.sub(r'^\s*[-•–]\s+', '', text, flags=re.MULTILINE)
-    # Remove AI conversational filler
-    text = re.sub(r'^(as an ai|here is|here\'s|in this analysis|based on the data|as a financial analyst)[^:\n]*[:\n-]*', '', text, flags=re.IGNORECASE)
-    # Normalize excessive newlines and whitespace
-    text = re.sub(r'\n{2,}', ' ', text)
-    text = re.sub(r'[ \t]+', ' ', text)
+    # 1. Strip markdown headers (#, ##, ###)
+    text = re.sub(r'#+\s*', '', text)
+    # 2. Remove introductory headers / conversational phrases
+    text = re.sub(r'^(?i)(?:executive summary|market analysis|overview|summary|analysis|market overview)\b[^\n\.]*[\n\.:]*', '', text)
+    text = re.sub(r'^(?i)(?:as an ai|as an ai language model|as a financial analyst ai|as an institutional analyst|here is (?:a|an)?\s*[^:\n]*:?|certainly!?:?|sure!?:?|based on (?:the|latest)[^:\n]*:?|in this analysis[^:\n]*:?|according to the[^:\n]*:?)\s*', '', text)
+    # 3. Strip all markdown formatting characters: *, _, `, ~, >, |, \
+    text = re.sub(r'[*_`~>|\\]', '', text)
+    # 4. Remove AI section headers / label markers
+    labels = [
+        "market trend", "current trend", "price trend", "price action", "price movement",
+        "key price factors", "price factors", "key factors", "key drivers",
+        "operational drivers", "macroeconomic drivers", "valuation drivers",
+        "valuation", "short-term outlook", "short term outlook", "near-term outlook",
+        "outlook", "catalysts", "risk factors", "technical analysis",
+        "fundamental analysis", "summary", "executive summary", "overview",
+        "conclusion", "analysis", "recommendation", "takeaways", "takeaway",
+        "support", "resistance", "support & resistance", "target price", "price target"
+    ]
+    pattern = r'(?:^|\n|\.\s+)(?:' + '|'.join(labels) + r'):\s*'
+    text = re.sub(pattern, '. ', text, flags=re.IGNORECASE)
+    # 5. Strip bullet points and list indicators
+    text = re.sub(r'(?:^|\n|\.\s+)[-•–—+*▪▫]\s+', '. ', text)
+    text = re.sub(r'(?:^|\n|\.\s+)\d+[\.)]\s+', '. ', text)
+    # 6. Remove common AI disclaimer footers
+    text = re.sub(r'(?i)(?:note|disclaimer):\s*(?:this is an ai|not financial advice|ai-generated|for informational purposes only).*$', '', text)
+    # 7. Normalize punctuation, dots and whitespaces
+    text = re.sub(r'\.{2,}', '.', text)
+    text = re.sub(r'\s+\.', '.', text)
+    text = re.sub(r'^\s*[\.\s]+', '', text)
+    text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
 
@@ -1315,18 +1337,18 @@ def get_ai_analysis(ticker, name, price, change_pct):
                 f"You are a professional senior equity research analyst writing an official executive summary for institutional investors. "
                 f"Analyze {name} ({ticker_str}) currently trading at {currency} {price:,.2f} ({'+' if change_pct >= 0 else ''}{change_pct:.2f}% session change). "
                 f"{market_context} "
-                f"Write 2 to 3 fluid, continuous sentences covering price trend, key operational or macroeconomic valuation drivers, and short-term outlook. "
-                f"Do NOT use bullet points, bold text, markdown asterisks, section headers, or conversational intros like 'Here is' or 'As an AI'. "
-                f"Keep it under 90 words."
+                f"Write 2 to 3 fluid, continuous sentences of unbroken prose covering price momentum, valuation drivers, and short-term expectations. "
+                f"Strictly do NOT use bullet points, bold text, markdown asterisks, colons, section headers (such as Trend:, Drivers:, Outlook:), or conversational intros like 'Here is' or 'As an AI'. "
+                f"Keep it under 100 words."
             )
             try:
                 completion = client.chat.completions.create(
                     model="openai/gpt-oss-120b",
                     messages=[
-                        {"role": "system", "content": "You are a senior institutional equity research analyst. Write clean, direct prose without markdown formatting, bullet points, asterisks, or conversational filler."},
+                        {"role": "system", "content": "You are a senior institutional equity research analyst. Write clean, continuous executive prose without markdown formatting, bullet points, asterisks, section headers, or conversational filler."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.3,
+                    temperature=0.2,
                     max_tokens=250
                 )
                 raw = completion.choices[0].message.content or ""
@@ -1334,14 +1356,14 @@ def get_ai_analysis(ticker, name, price, change_pct):
                 if cleaned:
                     return cleaned
             except Exception as model_err:
-                app.logger.info(f"Model openai/gpt-oss-120b fallback to llama-3.3-70b-versatile: {model_err}")
+                app.logger.info(f"Model openai/gpt-oss-120b fallback to openai/gpt-oss-20b: {model_err}")
                 completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="openai/gpt-oss-20b",
                     messages=[
-                        {"role": "system", "content": "You are a senior institutional equity research analyst. Write clean, direct prose without markdown formatting, bullet points, asterisks, or conversational filler."},
+                        {"role": "system", "content": "You are a senior institutional equity research analyst. Write clean, continuous executive prose without markdown formatting, bullet points, asterisks, section headers, or conversational filler."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.3,
+                    temperature=0.2,
                     max_tokens=250
                 )
                 raw = completion.choices[0].message.content or ""
