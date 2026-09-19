@@ -1751,6 +1751,27 @@ async function getNews(ticker: string) {
   }
 }
 
+function cleanAnalysisText(text: string): string {
+  if (!text) return '';
+  return text
+    // Remove conversational AI intros/greetings
+    .replace(/^(as an ai|as an ai language model|as a financial analyst ai|here is a brief analysis[^:]*:?|here is an analysis[^:]*:?|certainly!?:?|sure!?:?)\s*/i, '')
+    // Remove markdown headers like ### or ##
+    .replace(/^#+\s+/gm, '')
+    // Remove bold and italic markers
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    // Remove inline code ticks
+    .replace(/`([^`]+)`/g, '$1')
+    // Clean bullet list symbols
+    .replace(/^\s*[-*•]\s+/gm, '')
+    // Remove common AI disclaimer footers
+    .replace(/(note:\s*(this is an ai|not financial advice|ai-generated|for informational purposes only).*$)/i, '')
+    .trim();
+}
+
 async function getAiAnalysis(ticker: string, name: string, price: number, changePct: number): Promise<string> {
   const clean = normalizeAfricanTicker(ticker);
   const africanStock = AFRICAN_CATALOG[clean];
@@ -1787,10 +1808,12 @@ async function getAiAnalysis(ticker: string, name: string, price: number, change
     ? ` Focus on ${country} macroeconomic dynamics, central bank monetary policy, local currency trends, and sector liquidity on the ${exchange}.`
     : '';
 
+  const systemInstruction = 'You are a professional financial market analyst. Be factual, concise, and write in clean plain text paragraphs without asterisks, markdown syntax, bullet points, headers, or AI self-references.';
+
   // If GROQ_API_KEY is available, use Groq
   if (process.env.GROQ_API_KEY) {
     try {
-      const prompt = `You are a financial analyst.${macroContext} Give a brief analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Change today: ${changePct.toFixed(2)}%. Cover: current trend, key factors affecting price, and short-term outlook. Keep it concise, clear and under 150 words.`;
+      const prompt = `You are a financial analyst.${macroContext} Give a brief market analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Change today: ${changePct.toFixed(2)}%. Summarize current trend, key price factors, and short-term outlook in seamless plain text prose without any asterisks, markdown, bullets, or headers. Keep it under 140 words.`;
       
       const callGroq = async (modelName: string) => {
         return fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -1802,10 +1825,10 @@ async function getAiAnalysis(ticker: string, name: string, price: number, change
           body: JSON.stringify({
             model: modelName,
             messages: [
-              { role: 'system', content: 'You are a professional financial analyst. Be concise, factual and clear.' },
+              { role: 'system', content: systemInstruction },
               { role: 'user', content: prompt }
             ],
-            temperature: 0.3,
+            temperature: 0.2,
             max_tokens: 300
           }),
           signal: AbortSignal.timeout(8000)
@@ -1821,39 +1844,41 @@ async function getAiAnalysis(ticker: string, name: string, price: number, change
       if (res.ok) {
         const json = await res.json();
         const text = json.choices?.[0]?.message?.content;
-        if (text) return text;
+        if (text) return cleanAnalysisText(text);
       }
     } catch (err) {
-      console.warn('[AI] Groq call failed:', err);
+      console.warn('[Analysis] Groq call failed:', err);
     }
   }
 
   // If GEMINI_API_KEY is available, use Gemini
   if (process.env.GEMINI_API_KEY) {
     try {
-      const prompt = `You are a professional financial analyst. Give a brief analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Change today: ${changePct.toFixed(2)}%. Cover: current trend, key factors affecting price, and short-term outlook. Keep it concise, clear and under 150 words.`;
+      const prompt = `You are a professional financial analyst.${macroContext} Give a brief market analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Change today: ${changePct.toFixed(2)}%. Summarize current trend, key price factors, and short-term outlook in seamless plain text prose without any asterisks, markdown, bullets, or headers. Keep it under 140 words.`;
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
+          contents: [{ parts: [{ text: prompt }] }],
+          systemInstruction: { parts: [{ text: systemInstruction }] }
         }),
         signal: AbortSignal.timeout(8000)
       });
       if (res.ok) {
         const json = await res.json();
         const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text;
+        if (text) return cleanAnalysisText(text);
       }
     } catch (err) {
-      console.warn('[AI] Gemini call failed:', err);
+      console.warn('[Analysis] Gemini call failed:', err);
     }
   }
 
   // Graceful deterministic financial summary when external API is not configured
   const direction = changePct >= 0 ? 'bullish momentum' : 'bearish pressure';
   const sign = changePct >= 0 ? '+' : '';
-  return `${name} (${ticker}) is currently trading at ${currency} ${price.toLocaleString()}, reflecting ${direction} with a ${sign}${changePct.toFixed(2)}% session change. Trading volumes and market sentiment indicate active institutional participation and liquidity. Key drivers include macroeconomic updates, sector performance, and quarterly expectations. Short-term outlook remains sensitive to support levels and prevailing volatility.`;
+  const fallbackText = `${name} (${ticker}) is currently trading at ${currency} ${price.toLocaleString()}, reflecting ${direction} with a ${sign}${changePct.toFixed(2)}% session change. Trading volumes and market sentiment indicate active institutional participation and liquidity. Key drivers include macroeconomic updates, sector performance, and quarterly expectations. Short-term outlook remains sensitive to support levels and prevailing volatility.`;
+  return cleanAnalysisText(fallbackText);
 }
 
 // Check active alerts periodically
