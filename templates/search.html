@@ -6,49 +6,70 @@
 <!-- NO QUERY YET -->
 <div class="text-center py-5 mt-4">
     <div class="display-1 mb-3">🔍</div>
-    <h3 class="fw-semibold text-white">Enter a ticker above to search</h3>
-    <p class="text-muted mt-2">Try searching for symbols like "AAPL", "NVDA", or "BTC-USD".</p>
+    <h3 class="fw-semibold text-white">Search Global &amp; African Stock Markets</h3>
+    <p class="text-muted mt-2">Try searching by ticker, company, or country: "MTNGH", "DANGCEM", "SCOM", "Nigeria", "Kenya", "JSE", or "BTC-USD".</p>
+    <div class="d-flex flex-wrap justify-content-center gap-2 mt-4">
+        <a href="{{ url_for('search', q='Ghana') }}" class="btn btn-outline-warning btn-sm">🇬🇭 Ghana Stocks</a>
+        <a href="{{ url_for('search', q='Nigeria') }}" class="btn btn-outline-success btn-sm">🇳🇬 Nigeria Stocks</a>
+        <a href="{{ url_for('search', q='Kenya') }}" class="btn btn-outline-danger btn-sm">🇰🇪 Kenya Stocks</a>
+        <a href="{{ url_for('search', q='South Africa') }}" class="btn btn-outline-info btn-sm">🇿🇦 South Africa</a>
+        <a href="{{ url_for('search', q='BRVM') }}" class="btn btn-outline-warning btn-sm">🇨🇮 BRVM West Africa</a>
+        <a href="{{ url_for('search', q='Egypt') }}" class="btn btn-outline-danger btn-sm">🇪🇬 Egypt Stocks</a>
+    </div>
 </div>
 
 {% elif results %}
 <!-- RESULTS FOUND -->
-<h2 class="fw-bold text-white mb-4">
-    Search Results for '<span class="text-success">{{ query }}</span>'
-</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold text-white mb-0">
+        Search Results for '<span class="text-success">{{ query }}</span>'
+    </h2>
+    <span class="badge bg-secondary text-light">{{ results | length }} match{% if results | length != 1 %}es{% endif %} found</span>
+</div>
 
 <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
     {% for result in results %}
     <div class="col">
         <div class="card h-100 bg-dark border-secondary">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div>
-                        <h3 class="fw-bold text-white fs-3 mb-0">{{ result.symbol }}</h3>
-                        <p class="text-muted small text-uppercase mt-1">{{ result.name }}</p>
+            <div class="card-body d-flex flex-column justify-content-between">
+                <div>
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <h3 class="fw-bold text-white fs-4 mb-0 font-monospace">{{ result.symbol }}</h3>
+                                {% if result.flag %}
+                                <span class="fs-5" title="{{ result.country }}">{{ result.flag }}</span>
+                                {% endif %}
+                            </div>
+                            <p class="text-muted small text-uppercase mt-1 mb-0 text-truncate" title="{{ result.name }}">{{ result.name }}</p>
+                        </div>
+                        <div class="text-end">
+                            <p class="fw-bold text-white fs-5 mb-0">{{ result.currency | currency_sym }}{{ result.price }}</p>
+                            <p class="small fw-semibold mb-0
+                                {% if result.change_percent >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {% if result.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ result.change_percent }}%
+                            </p>
+                        </div>
                     </div>
-                    <div class="text-end">
-                        <p class="fw-bold text-white fs-5 mb-0">{{ result.currency | currency_sym }}{{ result.price }}</p>
-                        <p class="small fw-semibold mb-0
-                            {% if result.change_percent >= 0 %}text-success{% else %}text-danger{% endif %}">
-                            {% if result.change_percent >= 0 %}▲{% else %}▼{% endif %}
-                            {{ result.change_percent }}%
-                        </p>
+
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <span class="badge bg-secondary font-monospace">{{ result.exchange_code or result.exchange or 'Market' }}</span>
+                        {% if result.country %}
+                        <span class="badge bg-dark border border-secondary text-light">{{ result.country }}</span>
+                        {% endif %}
+                        {% if result.sector %}
+                        <span class="badge bg-dark border border-secondary text-muted text-truncate" style="max-width: 180px;">{{ result.sector }}</span>
+                        {% endif %}
+                        <span class="badge bg-dark border border-secondary text-muted">Vol: {{ '{:,}'.format(result.volume) if result.volume else 'Active' }}</span>
                     </div>
                 </div>
 
-                <div class="d-flex flex-wrap gap-2 mt-3">
-                    <span class="badge bg-secondary font-monospace">{{ result.exchange or 'Market' }}</span>
-                    {% if result.currency == 'GHS' %}
-                    <span class="badge bg-warning text-dark fw-bold">GSE Ghana</span>
-                    {% endif %}
-                    <span class="badge bg-dark border border-secondary text-muted">Vol: {{ '{:,}'.format(result.volume) if result.volume else 'Active' }}</span>
+                <div class="mt-4 pt-3 border-top border-secondary">
+                    <a href="{{ url_for('stock_detail', ticker=result.symbol) }}"
+                       class="btn btn-success btn-sm w-100">
+                        <i class="fa-solid fa-chart-line me-1"></i> View Details
+                    </a>
                 </div>
-            </div>
-            <div class="card-footer bg-dark border-secondary">
-                <a href="{{ url_for('stock_detail', ticker=result.symbol) }}"
-                   class="btn btn-success btn-sm w-100">
-                    <i class="fa-solid fa-chart-line me-1"></i> View Details
-                </a>
             </div>
         </div>
     </div>
@@ -62,7 +83,7 @@
     <h3 class="fw-bold text-white">No results found for "{{ query }}"</h3>
     <p class="text-muted mt-2">
         We couldn't find a matching stock or crypto asset.<br>
-        Please check the ticker symbol and try again.
+        Try searching by country ("Ghana", "Nigeria", "Kenya") or ticker ("MTNGH", "DANGCEM", "SCOM", "NPN").
     </p>
     <a href="{{ url_for('index') }}" class="btn btn-outline-success mt-3">
         ← Back to Dashboard

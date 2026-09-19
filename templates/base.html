@@ -35,9 +35,9 @@
     <link rel="apple-touch-startup-image" href="{{ url_for('static', filename='images/logo.png') }}">
     
     <!-- Description & Open Graph -->
-    <meta name="description" content="Real-time global stocks, crypto, and Ghana Stock Exchange (GSE) tracking with portfolio management and price alerts.">
+    <meta name="description" content="Real-time global stocks, crypto, and African equities (GSE Ghana, NGX Nigeria, NSE Kenya, JSE South Africa, BRVM, EGX Egypt) with portfolio management and price alerts.">
     <meta property="og:title" content="MarketSync">
-    <meta property="og:description" content="Real-time global stocks, crypto, and Ghana Stock Exchange (GSE) tracking with portfolio management and price alerts.">
+    <meta property="og:description" content="Real-time global stocks, crypto, and African equities (GSE Ghana, NGX Nigeria, NSE Kenya, JSE South Africa, BRVM, EGX Egypt) with portfolio management and price alerts.">
     
     <!-- Windows / Android -->
     <meta name="msapplication-TileColor" content="#0d0f1a">
@@ -59,7 +59,7 @@
             <form class="d-flex mx-auto search-form" action="{{ url_for('search') }}" method="GET">
                 <input class="form-control form-control-sm me-2"
                        type="search" name="q"
-                       placeholder="Search ticker (e.g. AAPL, BTC-USD)..."
+                       placeholder="Search global & African stocks (e.g. MTNGH, DANGCEM, NVDA)..."
                        aria-label="Search">
                 <button class="btn btn-outline-success btn-sm" type="submit">
                     <i class="fa-solid fa-magnifying-glass"></i>

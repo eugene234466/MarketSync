@@ -53,7 +53,10 @@ Date.prototype.strftime = function(fmt: string): string {
 const AFRICAN_EXCHANGES: Record<string, string> = {
   GSE: 'Ghana Stock Exchange (GHS)',
   NGX: 'Nigerian Exchange (NGN)',
-  BRVM: 'BRVM West Africa (XOF)'
+  NSE: 'Nairobi Securities Exchange (KES)',
+  JSE: 'Johannesburg Stock Exchange (ZAR)',
+  BRVM: 'BRVM West Africa (XOF)',
+  EGX: 'Egyptian Exchange (EGP)'
 };
 
 const INDEX_ALIASES: Record<string, string> = {
@@ -66,7 +69,14 @@ const INDEX_ALIASES: Record<string, string> = {
   GDAXI: '^GDAXI',
   VIX: '^VIX',
   TNX: '^TNX',
-  RUT: '^RUT'
+  RUT: '^RUT',
+  'GSE-CI': 'GSE-CI',
+  'GSE-FSI': 'GSE-FSI',
+  'NGX-ASI': 'NGX-ASI',
+  'NSE-20': 'NSE-20',
+  'JSE-TOP40': 'JSE-TOP40',
+  'BRVM-C': 'BRVM-C',
+  'EGX30': 'EGX30'
 };
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -111,25 +121,722 @@ function parseNumber(text: any): number | null {
   }
 }
 
-interface GseStockDefinition {
+export interface AfricanStockDefinition {
   symbol: string;
+  display_symbol?: string;
   name: string;
   price: number;
   prev_close: number;
   change: number;
   change_percent: number;
   volume: number;
-  market_cap: number;
-  high_52: number;
-  low_52: number;
+  market_cap: number | null;
+  high_52: number | null;
+  low_52: number | null;
   pe_ratio: number | null;
   dividend: number | null;
   sector: string;
   currency: string;
   exchange: string;
+  exchange_code: string;
+  country: string;
+  flag: string;
 }
 
-const GSE_CATALOG: Record<string, GseStockDefinition> = {
+export type GseStockDefinition = AfricanStockDefinition;
+
+export const AFRICAN_CATALOG: Record<string, AfricanStockDefinition> = {
+  // ── 🇳🇬 NIGERIA (NGX - NIGERIAN EXCHANGE) ─────────────────────────
+  DANGCEM: {
+    symbol: 'DANGCEM',
+    name: 'Dangote Cement PLC',
+    price: 680.00,
+    prev_close: 675.00,
+    change: 5.00,
+    change_percent: 0.74,
+    volume: 1450000,
+    market_cap: 11500000000000,
+    high_52: 750.00,
+    low_52: 320.00,
+    pe_ratio: 14.2,
+    dividend: 4.5,
+    sector: 'Industrial & Building Materials',
+    currency: 'NGN',
+    exchange: 'Nigerian Exchange (NGX)',
+    exchange_code: 'NGX',
+    country: 'Nigeria',
+    flag: '🇳🇬'
+  },
+  MTNN: {
+    symbol: 'MTNN',
+    name: 'MTN Nigeria Communications PLC',
+    price: 285.50,
+    prev_close: 282.00,
+    change: 3.50,
+    change_percent: 1.24,
+    volume: 3200000,
+    market_cap: 5900000000000,
+    high_52: 320.00,
+    low_52: 210.00,
+    pe_ratio: 11.5,
+    dividend: 5.2,
+    sector: 'Telecommunications',
+    currency: 'NGN',
+    exchange: 'Nigerian Exchange (NGX)',
+    exchange_code: 'NGX',
+    country: 'Nigeria',
+    flag: '🇳🇬'
+  },
+  GTCO: {
+    symbol: 'GTCO',
+    name: 'Guaranty Trust Holding Company PLC',
+    price: 52.80,
+    prev_close: 51.70,
+    change: 1.10,
+    change_percent: 2.13,
+    volume: 8900000,
+    market_cap: 1550000000000,
+    high_52: 55.00,
+    low_52: 36.00,
+    pe_ratio: 4.8,
+    dividend: 6.8,
+    sector: 'Banking & Financial Services',
+    currency: 'NGN',
+    exchange: 'Nigerian Exchange (NGX)',
+    exchange_code: 'NGX',
+    country: 'Nigeria',
+    flag: '🇳🇬'
+  },
+  ZENITHBANK: {
+    symbol: 'ZENITHBANK',
+    name: 'Zenith Bank PLC',
+    price: 44.50,
+    prev_close: 43.70,
+    change: 0.80,
+    change_percent: 1.83,
+    volume: 9400000,
+    market_cap: 1390000000000,
+    high_52: 47.00,
+    low_52: 32.50,
+    pe_ratio: 4.2,
+    dividend: 7.5,
+    sector: 'Banking & Financial Services',
+    currency: 'NGN',
+    exchange: 'Nigerian Exchange (NGX)',
+    exchange_code: 'NGX',
+    country: 'Nigeria',
+    flag: '🇳🇬'
+  },
+  AIRTELAFRI: {
+    symbol: 'AIRTELAFRI',
+    name: 'Airtel Africa PLC',
+    price: 2150.00,
+    prev_close: 2160.00,
+    change: -10.00,
+    change_percent: -0.46,
+    volume: 450000,
+    market_cap: 8100000000000,
+    high_52: 2400.00,
+    low_52: 1800.00,
+    pe_ratio: 16.8,
+    dividend: 3.1,
+    sector: 'Telecommunications',
+    currency: 'NGN',
+    exchange: 'Nigerian Exchange (NGX)',
+    exchange_code: 'NGX',
+    country: 'Nigeria',
+    flag: '🇳🇬'
+  },
+  SEPLAT: {
+    symbol: 'SEPLAT',
+    name: 'Seplat Energy PLC',
+    price: 3980.00,
+    prev_close: 3860.00,
+    change: 120.00,
+    change_percent: 3.11,
+    volume: 380000,
+    market_cap: 2340000000000,
+    high_52: 4200.00,
+    low_52: 1900.00,
+    pe_ratio: 7.4,
+    dividend: 4.1,
+    sector: 'Energy / Oil & Gas',
+    currency: 'NGN',
+    exchange: 'Nigerian Exchange (NGX)',
+    exchange_code: 'NGX',
+    country: 'Nigeria',
+    flag: '🇳🇬'
+  },
+  NESTLE: {
+    symbol: 'NESTLE',
+    name: 'Nestle Nigeria PLC',
+    price: 900.00,
+    prev_close: 900.00,
+    change: 0.00,
+    change_percent: 0.00,
+    volume: 65000,
+    market_cap: 713000000000,
+    high_52: 1150.00,
+    low_52: 850.00,
+    pe_ratio: 21.0,
+    dividend: 3.8,
+    sector: 'Consumer Goods / FMCG',
+    currency: 'NGN',
+    exchange: 'Nigerian Exchange (NGX)',
+    exchange_code: 'NGX',
+    country: 'Nigeria',
+    flag: '🇳🇬'
+  },
+  ACCESSCORP: {
+    symbol: 'ACCESSCORP',
+    name: 'Access Holdings PLC',
+    price: 21.40,
+    prev_close: 21.10,
+    change: 0.30,
+    change_percent: 1.42,
+    volume: 12500000,
+    market_cap: 760000000000,
+    high_52: 28.50,
+    low_52: 16.50,
+    pe_ratio: 3.8,
+    dividend: 6.0,
+    sector: 'Banking & Financial Services',
+    currency: 'NGN',
+    exchange: 'Nigerian Exchange (NGX)',
+    exchange_code: 'NGX',
+    country: 'Nigeria',
+    flag: '🇳🇬'
+  },
+  'NGX-ASI': {
+    symbol: 'NGX-ASI',
+    name: 'NGX All-Share Index',
+    price: 98240.50,
+    prev_close: 97605.00,
+    change: 635.50,
+    change_percent: 0.65,
+    volume: 450000000,
+    market_cap: 56000000000000,
+    high_52: 105000.00,
+    low_52: 70000.00,
+    pe_ratio: null,
+    dividend: null,
+    sector: 'National Benchmark Index',
+    currency: 'NGN',
+    exchange: 'Nigerian Exchange (NGX)',
+    exchange_code: 'NGX',
+    country: 'Nigeria',
+    flag: '🇳🇬'
+  },
+
+  // ── 🇰🇪 KENYA (NSE - NAIROBI SECURITIES EXCHANGE) ──────────────────
+  SCOM: {
+    symbol: 'SCOM',
+    name: 'Safaricom PLC',
+    price: 17.50,
+    prev_close: 17.20,
+    change: 0.30,
+    change_percent: 1.74,
+    volume: 14200000,
+    market_cap: 701000000000,
+    high_52: 20.50,
+    low_52: 13.50,
+    pe_ratio: 12.8,
+    dividend: 6.9,
+    sector: 'Telecommunications & Fintech (M-Pesa)',
+    currency: 'KES',
+    exchange: 'Nairobi Securities Exchange (NSE)',
+    exchange_code: 'NSE',
+    country: 'Kenya',
+    flag: '🇰🇪'
+  },
+  EQTY: {
+    symbol: 'EQTY',
+    name: 'Equity Group Holdings PLC',
+    price: 44.00,
+    prev_close: 43.00,
+    change: 1.00,
+    change_percent: 2.33,
+    volume: 4100000,
+    market_cap: 166000000000,
+    high_52: 48.50,
+    low_52: 34.00,
+    pe_ratio: 4.1,
+    dividend: 9.1,
+    sector: 'Banking & Financial Services',
+    currency: 'KES',
+    exchange: 'Nairobi Securities Exchange (NSE)',
+    exchange_code: 'NSE',
+    country: 'Kenya',
+    flag: '🇰🇪'
+  },
+  KCB: {
+    symbol: 'KCB',
+    name: 'KCB Group PLC',
+    price: 32.75,
+    prev_close: 32.40,
+    change: 0.35,
+    change_percent: 1.08,
+    volume: 3500000,
+    market_cap: 105000000000,
+    high_52: 38.00,
+    low_52: 21.00,
+    pe_ratio: 3.6,
+    dividend: 6.1,
+    sector: 'Banking & Financial Services',
+    currency: 'KES',
+    exchange: 'Nairobi Securities Exchange (NSE)',
+    exchange_code: 'NSE',
+    country: 'Kenya',
+    flag: '🇰🇪'
+  },
+  EABL: {
+    symbol: 'EABL',
+    name: 'East African Breweries Limited',
+    price: 152.00,
+    prev_close: 153.00,
+    change: -1.00,
+    change_percent: -0.65,
+    volume: 580000,
+    market_cap: 120000000000,
+    high_52: 175.00,
+    low_52: 120.00,
+    pe_ratio: 11.2,
+    dividend: 5.8,
+    sector: 'Beverages & Brewing',
+    currency: 'KES',
+    exchange: 'Nairobi Securities Exchange (NSE)',
+    exchange_code: 'NSE',
+    country: 'Kenya',
+    flag: '🇰🇪'
+  },
+  BAT: {
+    symbol: 'BAT',
+    name: 'British American Tobacco Kenya PLC',
+    price: 415.00,
+    prev_close: 415.00,
+    change: 0.00,
+    change_percent: 0.00,
+    volume: 45000,
+    market_cap: 41500000000,
+    high_52: 460.00,
+    low_52: 390.00,
+    pe_ratio: 8.5,
+    dividend: 11.5,
+    sector: 'Consumer Goods',
+    currency: 'KES',
+    exchange: 'Nairobi Securities Exchange (NSE)',
+    exchange_code: 'NSE',
+    country: 'Kenya',
+    flag: '🇰🇪'
+  },
+  SCBK: {
+    symbol: 'SCBK',
+    name: 'Standard Chartered Bank Kenya Limited',
+    price: 198.50,
+    prev_close: 197.00,
+    change: 1.50,
+    change_percent: 0.76,
+    volume: 180000,
+    market_cap: 75000000000,
+    high_52: 210.00,
+    low_52: 155.00,
+    pe_ratio: 5.4,
+    dividend: 11.8,
+    sector: 'Banking & Financial Services',
+    currency: 'KES',
+    exchange: 'Nairobi Securities Exchange (NSE)',
+    exchange_code: 'NSE',
+    country: 'Kenya',
+    flag: '🇰🇪'
+  },
+  'NSE-20': {
+    symbol: 'NSE-20',
+    name: 'NSE 20 Share Index',
+    price: 1845.20,
+    prev_close: 1836.40,
+    change: 8.80,
+    change_percent: 0.48,
+    volume: 25000000,
+    market_cap: 1600000000000,
+    high_52: 1950.00,
+    low_52: 1450.00,
+    pe_ratio: null,
+    dividend: null,
+    sector: 'National Benchmark Index',
+    currency: 'KES',
+    exchange: 'Nairobi Securities Exchange (NSE)',
+    exchange_code: 'NSE',
+    country: 'Kenya',
+    flag: '🇰🇪'
+  },
+
+  // ── 🇿🇦 SOUTH AFRICA (JSE - JOHANNESBURG STOCK EXCHANGE) ─────────
+  NPN: {
+    symbol: 'NPN',
+    name: 'Naspers Limited',
+    price: 3820.00,
+    prev_close: 3750.00,
+    change: 70.00,
+    change_percent: 1.87,
+    volume: 1250000,
+    market_cap: 1620000000000,
+    high_52: 4100.00,
+    low_52: 2850.00,
+    pe_ratio: 24.5,
+    dividend: 0.8,
+    sector: 'Technology & Global Internet',
+    currency: 'ZAR',
+    exchange: 'Johannesburg Stock Exchange (JSE)',
+    exchange_code: 'JSE',
+    country: 'South Africa',
+    flag: '🇿🇦'
+  },
+  FSR: {
+    symbol: 'FSR',
+    name: 'FirstRand Limited',
+    price: 78.50,
+    prev_close: 77.80,
+    change: 0.70,
+    change_percent: 0.90,
+    volume: 8600000,
+    market_cap: 440000000000,
+    high_52: 83.00,
+    low_52: 61.00,
+    pe_ratio: 10.2,
+    dividend: 4.9,
+    sector: 'Banking & Financial Services',
+    currency: 'ZAR',
+    exchange: 'Johannesburg Stock Exchange (JSE)',
+    exchange_code: 'JSE',
+    country: 'South Africa',
+    flag: '🇿🇦'
+  },
+  SOL: {
+    symbol: 'SOL',
+    name: 'Sasol Limited',
+    price: 138.40,
+    prev_close: 140.40,
+    change: -2.00,
+    change_percent: -1.42,
+    volume: 3100000,
+    market_cap: 88000000000,
+    high_52: 240.00,
+    low_52: 125.00,
+    pe_ratio: 6.8,
+    dividend: 5.5,
+    sector: 'Chemicals & Synthetic Fuels',
+    currency: 'ZAR',
+    exchange: 'Johannesburg Stock Exchange (JSE)',
+    exchange_code: 'JSE',
+    country: 'South Africa',
+    flag: '🇿🇦'
+  },
+  MTN: {
+    symbol: 'MTN',
+    name: 'MTN Group Limited',
+    price: 96.20,
+    prev_close: 94.20,
+    change: 2.00,
+    change_percent: 2.12,
+    volume: 4800000,
+    market_cap: 181000000000,
+    high_52: 128.00,
+    low_52: 78.00,
+    pe_ratio: 12.0,
+    dividend: 4.4,
+    sector: 'Telecommunications',
+    currency: 'ZAR',
+    exchange: 'Johannesburg Stock Exchange (JSE)',
+    exchange_code: 'JSE',
+    country: 'South Africa',
+    flag: '🇿🇦'
+  },
+  SBK: {
+    symbol: 'SBK',
+    name: 'Standard Bank Group Limited',
+    price: 215.00,
+    prev_close: 212.50,
+    change: 2.50,
+    change_percent: 1.18,
+    volume: 3900000,
+    market_cap: 358000000000,
+    high_52: 225.00,
+    low_52: 168.00,
+    pe_ratio: 8.7,
+    dividend: 6.8,
+    sector: 'Banking & Financial Services',
+    currency: 'ZAR',
+    exchange: 'Johannesburg Stock Exchange (JSE)',
+    exchange_code: 'JSE',
+    country: 'South Africa',
+    flag: '🇿🇦'
+  },
+  AGL: {
+    symbol: 'AGL',
+    name: 'Anglo American PLC',
+    price: 540.00,
+    prev_close: 537.00,
+    change: 3.00,
+    change_percent: 0.56,
+    volume: 2400000,
+    market_cap: 720000000000,
+    high_52: 650.00,
+    low_52: 410.00,
+    pe_ratio: 15.1,
+    dividend: 3.2,
+    sector: 'Mining & Natural Resources',
+    currency: 'ZAR',
+    exchange: 'Johannesburg Stock Exchange (JSE)',
+    exchange_code: 'JSE',
+    country: 'South Africa',
+    flag: '🇿🇦'
+  },
+  SHP: {
+    symbol: 'SHP',
+    name: 'Shoprite Holdings Limited',
+    price: 294.00,
+    prev_close: 290.00,
+    change: 4.00,
+    change_percent: 1.38,
+    volume: 1600000,
+    market_cap: 174000000000,
+    high_52: 310.00,
+    low_52: 230.00,
+    pe_ratio: 18.5,
+    dividend: 2.8,
+    sector: 'Retail & Supermarkets',
+    currency: 'ZAR',
+    exchange: 'Johannesburg Stock Exchange (JSE)',
+    exchange_code: 'JSE',
+    country: 'South Africa',
+    flag: '🇿🇦'
+  },
+  'JSE-TOP40': {
+    symbol: 'JSE-TOP40',
+    name: 'FTSE/JSE Top 40 Index',
+    price: 76450.00,
+    prev_close: 75905.00,
+    change: 545.00,
+    change_percent: 0.72,
+    volume: 85000000,
+    market_cap: 18000000000000,
+    high_52: 79000.00,
+    low_52: 66000.00,
+    pe_ratio: null,
+    dividend: null,
+    sector: 'National Benchmark Index',
+    currency: 'ZAR',
+    exchange: 'Johannesburg Stock Exchange (JSE)',
+    exchange_code: 'JSE',
+    country: 'South Africa',
+    flag: '🇿🇦'
+  },
+
+  // ── 🇨🇮 BRVM (WEST AFRICA REGIONAL EXCHANGE - CÔTE D'IVOIRE / SENEGAL) ─
+  SNTS: {
+    symbol: 'SNTS',
+    name: 'Sonatel Senegal (Orange)',
+    price: 19800.00,
+    prev_close: 19600.00,
+    change: 200.00,
+    change_percent: 1.02,
+    volume: 120000,
+    market_cap: 1980000000000,
+    high_52: 21000.00,
+    low_52: 15500.00,
+    pe_ratio: 8.2,
+    dividend: 8.5,
+    sector: 'Telecommunications',
+    currency: 'XOF',
+    exchange: 'BRVM West Africa',
+    exchange_code: 'BRVM',
+    country: 'Senegal / Côte d\'Ivoire',
+    flag: '🇨🇮'
+  },
+  ECOC: {
+    symbol: 'ECOC',
+    name: 'Ecobank Côte d\'Ivoire',
+    price: 7650.00,
+    prev_close: 7500.00,
+    change: 150.00,
+    change_percent: 1.99,
+    volume: 65000,
+    market_cap: 420000000000,
+    high_52: 8200.00,
+    low_52: 5200.00,
+    pe_ratio: 6.1,
+    dividend: 7.4,
+    sector: 'Banking & Financial Services',
+    currency: 'XOF',
+    exchange: 'BRVM West Africa',
+    exchange_code: 'BRVM',
+    country: 'Côte d\'Ivoire',
+    flag: '🇨🇮'
+  },
+  SGBC: {
+    symbol: 'SGBC',
+    name: 'Société Générale Côte d\'Ivoire',
+    price: 18200.00,
+    prev_close: 18100.00,
+    change: 100.00,
+    change_percent: 0.55,
+    volume: 45000,
+    market_cap: 565000000000,
+    high_52: 19500.00,
+    low_52: 13500.00,
+    pe_ratio: 7.0,
+    dividend: 6.8,
+    sector: 'Banking & Financial Services',
+    currency: 'XOF',
+    exchange: 'BRVM West Africa',
+    exchange_code: 'BRVM',
+    country: 'Côte d\'Ivoire',
+    flag: '🇨🇮'
+  },
+  ONTBF: {
+    symbol: 'ONTBF',
+    name: 'Onatel Burkina Faso',
+    price: 2450.00,
+    prev_close: 2470.00,
+    change: -20.00,
+    change_percent: -0.81,
+    volume: 85000,
+    market_cap: 166000000000,
+    high_52: 3100.00,
+    low_52: 2200.00,
+    pe_ratio: 5.9,
+    dividend: 9.2,
+    sector: 'Telecommunications',
+    currency: 'XOF',
+    exchange: 'BRVM West Africa',
+    exchange_code: 'BRVM',
+    country: 'Burkina Faso',
+    flag: '🇨🇮'
+  },
+  'BRVM-C': {
+    symbol: 'BRVM-C',
+    name: 'BRVM Composite Index',
+    price: 268.40,
+    prev_close: 267.50,
+    change: 0.90,
+    change_percent: 0.34,
+    volume: 1500000,
+    market_cap: 9800000000000,
+    high_52: 285.00,
+    low_52: 205.00,
+    pe_ratio: null,
+    dividend: null,
+    sector: 'Regional Benchmark Index',
+    currency: 'XOF',
+    exchange: 'BRVM West Africa',
+    exchange_code: 'BRVM',
+    country: 'UEMOA Regional',
+    flag: '🇨🇮'
+  },
+
+  // ── 🇪🇬 EGYPT (EGX - EGYPTIAN EXCHANGE) ───────────────────────────
+  COMI: {
+    symbol: 'COMI',
+    name: 'Commercial International Bank (CIB)',
+    price: 82.50,
+    prev_close: 81.20,
+    change: 1.30,
+    change_percent: 1.60,
+    volume: 6800000,
+    market_cap: 248000000000,
+    high_52: 94.00,
+    low_52: 58.00,
+    pe_ratio: 7.8,
+    dividend: 4.5,
+    sector: 'Banking & Financial Services',
+    currency: 'EGP',
+    exchange: 'Egyptian Exchange (EGX)',
+    exchange_code: 'EGX',
+    country: 'Egypt',
+    flag: '🇪🇬'
+  },
+  EAST: {
+    symbol: 'EAST',
+    name: 'Eastern Company',
+    price: 27.80,
+    prev_close: 27.60,
+    change: 0.20,
+    change_percent: 0.72,
+    volume: 4200000,
+    market_cap: 62000000000,
+    high_52: 33.00,
+    low_52: 21.00,
+    pe_ratio: 6.2,
+    dividend: 9.5,
+    sector: 'Consumer Goods',
+    currency: 'EGP',
+    exchange: 'Egyptian Exchange (EGX)',
+    exchange_code: 'EGX',
+    country: 'Egypt',
+    flag: '🇪🇬'
+  },
+  HRHO: {
+    symbol: 'HRHO',
+    name: 'EFG Holding (Hermes)',
+    price: 19.40,
+    prev_close: 19.00,
+    change: 0.40,
+    change_percent: 2.11,
+    volume: 8100000,
+    market_cap: 28000000000,
+    high_52: 23.50,
+    low_52: 14.50,
+    pe_ratio: 8.9,
+    dividend: 5.0,
+    sector: 'Investment Banking & Financial Services',
+    currency: 'EGP',
+    exchange: 'Egyptian Exchange (EGX)',
+    exchange_code: 'EGX',
+    country: 'Egypt',
+    flag: '🇪🇬'
+  },
+  TMGH: {
+    symbol: 'TMGH',
+    name: 'Talaat Moustafa Group Holding',
+    price: 58.20,
+    prev_close: 56.20,
+    change: 2.00,
+    change_percent: 3.56,
+    volume: 5500000,
+    market_cap: 120000000000,
+    high_52: 72.00,
+    low_52: 32.00,
+    pe_ratio: 12.4,
+    dividend: 2.5,
+    sector: 'Real Estate & Hospitality',
+    currency: 'EGP',
+    exchange: 'Egyptian Exchange (EGX)',
+    exchange_code: 'EGX',
+    country: 'Egypt',
+    flag: '🇪🇬'
+  },
+  EGX30: {
+    symbol: 'EGX30',
+    name: 'EGX 30 Index',
+    price: 30540.00,
+    prev_close: 30192.00,
+    change: 348.00,
+    change_percent: 1.15,
+    volume: 95000000,
+    market_cap: 2100000000000,
+    high_52: 33500.00,
+    low_52: 23000.00,
+    pe_ratio: null,
+    dividend: null,
+    sector: 'National Benchmark Index',
+    currency: 'EGP',
+    exchange: 'Egyptian Exchange (EGX)',
+    exchange_code: 'EGX',
+    country: 'Egypt',
+    flag: '🇪🇬'
+  },
+
+  // ── 🇬🇭 GHANA (GSE - GHANA STOCK EXCHANGE) ────────────────────────
   MTNGH: {
     symbol: 'MTNGH',
     name: 'Scancom PLC (MTN Ghana)',
@@ -145,7 +852,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 4.8,
     sector: 'Telecommunications',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   GCB: {
     symbol: 'GCB',
@@ -162,7 +872,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 7.2,
     sector: 'Banking & Financial Services',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   SCB: {
     symbol: 'SCB',
@@ -179,7 +892,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 6.5,
     sector: 'Banking & Financial Services',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   EGH: {
     symbol: 'EGH',
@@ -196,7 +912,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 5.9,
     sector: 'Banking & Financial Services',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   CAL: {
     symbol: 'CAL',
@@ -213,7 +932,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 0.0,
     sector: 'Banking & Financial Services',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   TOTAL: {
     symbol: 'TOTAL',
@@ -230,7 +952,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 8.1,
     sector: 'Energy & Petroleum Marketing',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   GOIL: {
     symbol: 'GOIL',
@@ -247,7 +972,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 4.2,
     sector: 'Energy & Petroleum Marketing',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   BOPP: {
     symbol: 'BOPP',
@@ -264,7 +992,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 6.8,
     sector: 'Agriculture & Agro-Processing',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   FML: {
     symbol: 'FML',
@@ -281,7 +1012,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 3.5,
     sector: 'Consumer Goods / Food & Beverage',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   UNIL: {
     symbol: 'UNIL',
@@ -298,24 +1032,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 3.1,
     sector: 'Consumer Goods',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
-  },
-  EGL: {
-    symbol: 'EGL',
-    name: 'Enterprise Group PLC',
-    price: 7.00,
-    prev_close: 6.93,
-    change: 0.07,
-    change_percent: 1.07,
-    volume: 75000,
-    market_cap: 1200000000,
-    high_52: 7.80,
-    low_52: 5.20,
-    pe_ratio: 5.8,
-    dividend: 5.0,
-    sector: 'Insurance & Financial Services',
-    currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   ACCESS: {
     symbol: 'ACCESS',
@@ -332,7 +1052,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 6.0,
     sector: 'Banking & Financial Services',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   SOGEGH: {
     symbol: 'SOGEGH',
@@ -349,7 +1072,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 7.0,
     sector: 'Banking & Financial Services',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   GGBL: {
     symbol: 'GGBL',
@@ -366,7 +1092,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 4.5,
     sector: 'Beverage & Brewing',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   ADB: {
     symbol: 'ADB',
@@ -383,7 +1112,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 0.0,
     sector: 'Banking & Development Finance',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   AGA: {
     symbol: 'AGA',
@@ -400,7 +1132,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 2.1,
     sector: 'Mining & Gold Exploration',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   GLD: {
     symbol: 'GLD',
@@ -417,7 +1152,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: 0.0,
     sector: 'Exchange Traded Funds (Gold)',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   'GSE-CI': {
     symbol: 'GSE-CI',
@@ -434,7 +1172,10 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: null,
     sector: 'National Benchmark Index',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   },
   'GSE-FSI': {
     symbol: 'GSE-FSI',
@@ -451,16 +1192,36 @@ const GSE_CATALOG: Record<string, GseStockDefinition> = {
     dividend: null,
     sector: 'Financial Sector Benchmark Index',
     currency: 'GHS',
-    exchange: 'Ghana Stock Exchange (GSE)'
+    exchange: 'Ghana Stock Exchange (GSE)',
+    exchange_code: 'GSE',
+    country: 'Ghana',
+    flag: '🇬🇭'
   }
 };
 
-function normalizeGseTicker(rawTicker: string): string {
+// Aliased for full backwards compatibility
+export const GSE_CATALOG: Record<string, AfricanStockDefinition> = Object.fromEntries(
+  Object.entries(AFRICAN_CATALOG).filter(([_, s]) => s.exchange_code === 'GSE')
+);
+
+function normalizeAfricanTicker(rawTicker: string): string {
   return rawTicker
     .trim()
     .toUpperCase()
-    .replace(/^GSE:/, '')
-    .replace(/\.(GH|GSE)$/, '');
+    .replace(/^(GSE|NGX|NSE|JSE|BRVM|EGX):/, '')
+    .replace(/\.(GH|GSE|NG|NRB|JSE|JO|CA)$/, '');
+}
+
+function isAfricanTicker(rawTicker: string): boolean {
+  const t = rawTicker.trim().toUpperCase();
+  if (['GSE:', 'NGX:', 'NSE:', 'JSE:', 'BRVM:', 'EGX:'].some(p => t.startsWith(p))) return true;
+  if (/\.(GH|GSE|NG|NRB|JSE|JO|CA)$/.test(t)) return true;
+  const clean = normalizeAfricanTicker(t);
+  return Boolean(AFRICAN_CATALOG[clean] || AFRICAN_CATALOG[t]);
+}
+
+function normalizeGseTicker(rawTicker: string): string {
+  return normalizeAfricanTicker(rawTicker);
 }
 
 function isGseTicker(rawTicker: string): boolean {
@@ -631,13 +1392,36 @@ async function getAfricanStockAfx(ticker: string, exchange: string) {
 
 async function getAfricanStock(tickerStr: string) {
   try {
-    if (!tickerStr.includes(':')) return null;
-    const [exchange, ticker] = tickerStr.toUpperCase().split(':', 2);
-    if (exchange === 'GSE') {
-      return await getGseStock(ticker);
-    } else if (exchange === 'NGX' || exchange === 'BRVM') {
-      return await getAfricanStockAfx(ticker, exchange);
+    const raw = tickerStr.trim().toUpperCase();
+    const clean = normalizeAfricanTicker(raw);
+    const cacheKey = `AFRICA:${clean}`;
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+
+    // Check catalog first
+    const catalogItem = AFRICAN_CATALOG[clean] || AFRICAN_CATALOG[raw];
+
+    // For GSE stocks, try live scraper first
+    if (catalogItem?.exchange_code === 'GSE' || raw.startsWith('GSE:') || raw.endsWith('.GH')) {
+      const gse = await getGseStock(clean);
+      if (gse) return gse;
     }
+
+    // For NGX / BRVM prefixed lookups, attempt live scraping if not found
+    if (raw.includes(':')) {
+      const [exchange, sym] = raw.split(':', 2);
+      if (exchange === 'NGX' || exchange === 'BRVM') {
+        const live = await getAfricanStockAfx(sym, exchange);
+        if (live) return live;
+      }
+    }
+
+    if (catalogItem) {
+      const stock = { ...catalogItem, symbol: clean };
+      setCached(cacheKey, stock);
+      return stock;
+    }
+
     return null;
   } catch (err) {
     console.error('[African] Routing error:', err);
@@ -645,7 +1429,7 @@ async function getAfricanStock(tickerStr: string) {
   }
 }
 
-function generateGseHistory(stock: any, period = '1mo'): { dates: string[]; prices: number[] } {
+function generateAfricanHistory(stock: any, period = '1mo'): { dates: string[]; prices: number[] } {
   const currentPrice = Number(stock.price) || 10;
   const dates: string[] = [];
   const prices: number[] = [];
@@ -678,8 +1462,9 @@ function generateGseHistory(stock: any, period = '1mo'): { dates: string[]; pric
 
   const now = Date.now();
   let seed = 0;
-  for (let i = 0; i < (stock.symbol || 'GSE').length; i++) {
-    seed += (stock.symbol || 'GSE').charCodeAt(i);
+  const sym = stock.symbol || 'AFX';
+  for (let i = 0; i < sym.length; i++) {
+    seed += sym.charCodeAt(i);
   }
 
   const tempPrices: number[] = [];
@@ -690,7 +1475,7 @@ function generateGseHistory(stock: any, period = '1mo'): { dates: string[]; pric
   for (let i = 1; i < count; i++) {
     seed = (seed * 9301 + 49297) % 233280;
     const rnd = seed / 233280 - 0.48;
-    p = Math.max(0.1, p - rnd * stepVolatility);
+    p = Math.max(0.01, p - rnd * stepVolatility);
     tempPrices.push(Math.round(p * 100) / 100);
   }
 
@@ -714,41 +1499,48 @@ function generateGseHistory(stock: any, period = '1mo'): { dates: string[]; pric
   return { dates, prices };
 }
 
-function getGseNews(symbol: string, name: string) {
+const generateGseHistory = generateAfricanHistory;
+
+function getAfricanNews(symbol: string, name: string, exchange = 'African Market', country = 'African', sector = 'Equities') {
+  const now = Date.now();
   return [
     {
-      title: `${name} (${symbol}) demonstrates robust operational growth and liquidity on the Ghana Stock Exchange`,
-      link: 'https://gse.com.gh',
-      date: new Date(Date.now() - 3 * 3600 * 1000).toUTCString()
+      title: `${name} (${symbol}) registers strong trading volume and investor interest on ${exchange}`,
+      link: 'https://afx.kwayisi.org',
+      date: new Date(now - 2 * 3600 * 1000).toUTCString()
     },
     {
-      title: 'Ghana Stock Exchange Composite Index expands as institutional investors increase allocations to equities',
-      link: 'https://gse.com.gh',
-      date: new Date(Date.now() - 14 * 3600 * 1000).toUTCString()
+      title: `${country} equities advance as institutional capital expands positions across ${sector}`,
+      link: 'https://afx.kwayisi.org',
+      date: new Date(now - 11 * 3600 * 1000).toUTCString()
     },
     {
-      title: `Bank of Ghana macroeconomic report highlights resilient domestic equity valuation for ${symbol}`,
-      link: 'https://gse.com.gh',
-      date: new Date(Date.now() - 36 * 3600 * 1000).toUTCString()
+      title: `Quarterly outlook: Analysts assess fundamentals, cashflow, and dividend prospects for ${symbol}`,
+      link: 'https://afx.kwayisi.org',
+      date: new Date(now - 29 * 3600 * 1000).toUTCString()
     },
     {
-      title: 'West African capital markets maintain positive momentum with strong cedi stabilization',
-      link: 'https://gse.com.gh',
-      date: new Date(Date.now() - 58 * 3600 * 1000).toUTCString()
+      title: `African capital markets demonstrate resilient growth and regional cross-border investment flows`,
+      link: 'https://afx.kwayisi.org',
+      date: new Date(now - 52 * 3600 * 1000).toUTCString()
     }
   ];
+}
+
+function getGseNews(symbol: string, name: string) {
+  return getAfricanNews(symbol, name, 'Ghana Stock Exchange (GSE)', 'Ghana', 'Equities');
 }
 
 async function getStockData(ticker: string) {
   ticker = ticker.trim().toUpperCase();
 
-  // GSE stock direct check (e.g. MTNGH, GCB, GSE:MTNGH, MTNGH.GH)
-  if (isGseTicker(ticker)) {
-    const gseStock = await getGseStock(ticker);
-    if (gseStock) return gseStock;
+  // 1. Direct African stock lookup (GSE, NGX, NSE, JSE, BRVM, EGX)
+  if (isAfricanTicker(ticker)) {
+    const africanStock = await getAfricanStock(ticker);
+    if (africanStock) return africanStock;
   }
 
-  // African exchange prefix (GSE:, NGX:, BRVM:)
+  // 2. Prefixed African ticker (e.g. GSE:MTNGH, NGX:DANGCEM, NSE:SCOM, JSE:NPN, BRVM:SNTS, EGX:COMI)
   if (ticker.includes(':')) {
     const prefix = ticker.split(':')[0];
     if (AFRICAN_EXCHANGES[prefix]) {
@@ -842,16 +1634,21 @@ async function getStockData(ticker: string) {
 }
 
 async function getStockHistory(ticker: string, period = '1mo'): Promise<{ dates: string[]; prices: number[] }> {
-  // GSE stocks historical data
-  if (isGseTicker(ticker)) {
-    const stock = await getGseStock(ticker);
+  // African stocks (including GSE, NGX, NSE, JSE, BRVM, EGX)
+  if (isAfricanTicker(ticker) || isGseTicker(ticker)) {
+    const stock = await getStockData(ticker);
     if (stock) {
-      return generateGseHistory(stock, period);
+      return generateAfricanHistory(stock, period);
     }
     return { dates: [], prices: [] };
   }
 
   if (ticker.includes(':')) {
+    const [prefix] = ticker.split(':');
+    if (AFRICAN_EXCHANGES[prefix]) {
+      const stock = await getStockData(ticker);
+      if (stock) return generateAfricanHistory(stock, period);
+    }
     return { dates: [], prices: [] };
   }
 
@@ -913,10 +1710,16 @@ async function getStockHistory(ticker: string, period = '1mo'): Promise<{ dates:
 }
 
 async function getNews(ticker: string) {
-  if (isGseTicker(ticker)) {
-    const clean = normalizeGseTicker(ticker);
-    const stock = GSE_CATALOG[clean] || (await getGseStock(ticker));
-    return getGseNews(clean, stock?.name || clean);
+  if (isAfricanTicker(ticker) || isGseTicker(ticker)) {
+    const clean = normalizeAfricanTicker(ticker);
+    const stock = (await getStockData(ticker)) || AFRICAN_CATALOG[clean];
+    return getAfricanNews(
+      clean,
+      stock?.name || clean,
+      stock?.exchange || 'African Market',
+      stock?.country || 'African',
+      stock?.sector || 'Equities'
+    );
   }
 
   try {
@@ -949,20 +1752,45 @@ async function getNews(ticker: string) {
 }
 
 async function getAiAnalysis(ticker: string, name: string, price: number, changePct: number): Promise<string> {
-  const isGse = isGseTicker(ticker);
-  const currency = isGse
-    ? 'GHS'
-    : ticker.startsWith('NGX:')
-    ? 'NGN'
-    : ticker.startsWith('BRVM:')
-    ? 'XOF'
-    : 'USD';
+  const clean = normalizeAfricanTicker(ticker);
+  const africanStock = AFRICAN_CATALOG[clean];
+  const isAfrican = Boolean(africanStock || isAfricanTicker(ticker));
+
+  const currency = africanStock?.currency || (
+    ticker.startsWith('NGX:') ? 'NGN' :
+    ticker.startsWith('NSE:') ? 'KES' :
+    ticker.startsWith('JSE:') ? 'ZAR' :
+    ticker.startsWith('BRVM:') ? 'XOF' :
+    ticker.startsWith('EGX:') ? 'EGP' :
+    isGseTicker(ticker) ? 'GHS' : 'USD'
+  );
+
+  const country = africanStock?.country || (
+    currency === 'GHS' ? 'Ghana' :
+    currency === 'NGN' ? 'Nigeria' :
+    currency === 'KES' ? 'Kenya' :
+    currency === 'ZAR' ? 'South Africa' :
+    currency === 'XOF' ? 'West Africa' :
+    currency === 'EGP' ? 'Egypt' : 'Global'
+  );
+
+  const exchange = africanStock?.exchange || (
+    currency === 'GHS' ? 'Ghana Stock Exchange (GSE)' :
+    currency === 'NGN' ? 'Nigerian Exchange (NGX)' :
+    currency === 'KES' ? 'Nairobi Securities Exchange (NSE)' :
+    currency === 'ZAR' ? 'Johannesburg Stock Exchange (JSE)' :
+    currency === 'XOF' ? 'BRVM West Africa' :
+    currency === 'EGP' ? 'Egyptian Exchange (EGX)' : 'Global Market'
+  );
+
+  const macroContext = isAfrican
+    ? ` Focus on ${country} macroeconomic dynamics, central bank monetary policy, local currency trends, and sector liquidity on the ${exchange}.`
+    : '';
 
   // If GROQ_API_KEY is available, use Groq
   if (process.env.GROQ_API_KEY) {
     try {
-      const gseContext = isGse ? ' Focus on Ghana Stock Exchange (GSE) dynamics, Bank of Ghana monetary climate, and Cedi exchange considerations.' : '';
-      const prompt = `You are a financial analyst.${gseContext} Give a brief analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Change today: ${changePct.toFixed(2)}%. Cover: current trend, key factors affecting price, and short-term outlook. Keep it concise, clear and under 150 words.`;
+      const prompt = `You are a financial analyst.${macroContext} Give a brief analysis of ${name} (${ticker}). Current price: ${currency} ${price}. Change today: ${changePct.toFixed(2)}%. Cover: current trend, key factors affecting price, and short-term outlook. Keep it concise, clear and under 150 words.`;
       
       const callGroq = async (modelName: string) => {
         return fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -1248,9 +2076,11 @@ app.get('/', async (req: Request, res: Response) => {
 
   const indicesSymbols = [
     { symbol: 'GSE-CI', fallback: 'GSE Composite (Accra)' },
+    { symbol: 'NGX-ASI', fallback: 'NGX All-Share (Lagos)' },
+    { symbol: 'NSE-20', fallback: 'NSE 20 (Nairobi)' },
+    { symbol: 'JSE-TOP40', fallback: 'JSE Top 40 (Joburg)' },
     { symbol: '^GSPC', fallback: 'S&P 500' },
     { symbol: '^IXIC', fallback: 'NASDAQ' },
-    { symbol: '^DJI', fallback: 'DOW JONES' },
     { symbol: 'BTC-USD', fallback: 'Bitcoin' },
     { symbol: 'ETH-USD', fallback: 'Ethereum' }
   ];
@@ -1281,15 +2111,48 @@ app.get('/', async (req: Request, res: Response) => {
     })
   );
 
-  // Featured Ghana Stock Exchange equities
+  // Grouped African stocks for dashboard showcase
   const gseTickers = ['MTNGH', 'GCB', 'TOTAL', 'EGH', 'CAL', 'GOIL', 'BOPP', 'FML'];
-  const gseStocks = await Promise.all(
-    gseTickers.map(ticker => getGseStock(ticker))
-  );
+  const ngxTickers = ['DANGCEM', 'MTNN', 'ZENITHBANK', 'GTCO', 'AIRTELAFRI', 'SEPLAT', 'ACCESSCORP', 'NESTLE'];
+  const nseTickers = ['SCOM', 'EQTY', 'KCB', 'EABL', 'BAT', 'SCBK'];
+  const jseTickers = ['NPN', 'FSR', 'SOL', 'AGL', 'BTI', 'SHP'];
+  const brvmTickers = ['SNTS', 'SGBC', 'ECOC', 'ONTBF', 'TTLC'];
+  const egxTickers = ['COMI', 'ETEL', 'EAST', 'HRHO', 'TMGH'];
+
+  const [gseStocks, ngxStocks, nseStocks, jseStocks, brvmStocks, egxStocks] = await Promise.all([
+    Promise.all(gseTickers.map(t => getStockData(t))),
+    Promise.all(ngxTickers.map(t => getStockData(t))),
+    Promise.all(nseTickers.map(t => getStockData(t))),
+    Promise.all(jseTickers.map(t => getStockData(t))),
+    Promise.all(brvmTickers.map(t => getStockData(t))),
+    Promise.all(egxTickers.map(t => getStockData(t)))
+  ]);
+
+  const cleanGse = gseStocks.filter(Boolean);
+  const cleanNgx = ngxStocks.filter(Boolean);
+  const cleanNse = nseStocks.filter(Boolean);
+  const cleanJse = jseStocks.filter(Boolean);
+  const cleanBrvm = brvmStocks.filter(Boolean);
+  const cleanEgx = egxStocks.filter(Boolean);
+
+  const allAfricanStocks = [
+    ...cleanGse,
+    ...cleanNgx,
+    ...cleanNse,
+    ...cleanJse,
+    ...cleanBrvm,
+    ...cleanEgx
+  ];
 
   res.render('index.html', {
     indices: indicesData,
-    gse_stocks: gseStocks.filter(Boolean),
+    gse_stocks: cleanGse,
+    ngx_stocks: cleanNgx,
+    nse_stocks: cleanNse,
+    jse_stocks: cleanJse,
+    brvm_stocks: cleanBrvm,
+    egx_stocks: cleanEgx,
+    african_stocks: allAfricanStocks,
     just_logged_out: justLoggedOut
   });
 });
@@ -1300,29 +2163,84 @@ app.get('/search', async (req: Request, res: Response) => {
   const results: any[] = [];
 
   if (query) {
-    // 1. General Ghana / GSE queries
-    if (['GHANA', 'GSE', 'CEDI', 'CEDIS', 'ACCRA'].some(k => query.includes(k))) {
-      for (const ticker of ['MTNGH', 'GCB', 'TOTAL', 'EGH', 'CAL', 'GOIL', 'BOPP', 'FML', 'SCB', 'UNIL', 'GSE-CI']) {
-        const stock = await getGseStock(ticker);
-        if (stock) results.push(stock);
+    const cleanTicker = normalizeAfricanTicker(query);
+
+    // 1. Regional / Country / Exchange queries
+    const isAfricaGeneral = ['AFRICA', 'AFRICAN'].some(k => query.includes(k));
+    const isGhana = ['GHANA', 'GSE', 'CEDI', 'CEDIS', 'ACCRA'].some(k => query.includes(k));
+    const isNigeria = ['NIGERIA', 'NGX', 'NAIRA', 'LAGOS'].some(k => query.includes(k));
+    const isKenya = ['KENYA', 'NSE', 'SHILLING', 'NAIROBI'].some(k => query.includes(k));
+    const isSouthAfrica = ['SOUTH AFRICA', 'JSE', 'RAND', 'JOHANNESBURG'].some(k => query.includes(k));
+    const isBrvm = ['BRVM', 'WAEMU', 'CFA', 'ABIDJAN', 'IVORY COAST', "COTE D'IVOIRE", 'SENEGAL'].some(k => query.includes(k));
+    const isEgypt = ['EGYPT', 'EGX', 'POUND', 'CAIRO'].some(k => query.includes(k));
+
+    if (isAfricaGeneral) {
+      const sampleTickers = ['MTNGH', 'GCB', 'DANGCEM', 'MTNN', 'SCOM', 'EQTY', 'NPN', 'FSR', 'SNTS', 'SGBC', 'COMI', 'ETEL'];
+      for (const t of sampleTickers) {
+        const s = await getStockData(t);
+        if (s && !results.some(r => r.symbol === s.symbol)) results.push(s);
+      }
+    } else if (isGhana) {
+      for (const [key, item] of Object.entries(AFRICAN_CATALOG)) {
+        if (item.exchange_code === 'GSE') {
+          const s = await getStockData(key);
+          if (s && !results.some(r => r.symbol === s.symbol)) results.push(s);
+        }
+      }
+    } else if (isNigeria) {
+      for (const [key, item] of Object.entries(AFRICAN_CATALOG)) {
+        if (item.exchange_code === 'NGX') {
+          const s = await getStockData(key);
+          if (s && !results.some(r => r.symbol === s.symbol)) results.push(s);
+        }
+      }
+    } else if (isKenya) {
+      for (const [key, item] of Object.entries(AFRICAN_CATALOG)) {
+        if (item.exchange_code === 'NSE') {
+          const s = await getStockData(key);
+          if (s && !results.some(r => r.symbol === s.symbol)) results.push(s);
+        }
+      }
+    } else if (isSouthAfrica) {
+      for (const [key, item] of Object.entries(AFRICAN_CATALOG)) {
+        if (item.exchange_code === 'JSE') {
+          const s = await getStockData(key);
+          if (s && !results.some(r => r.symbol === s.symbol)) results.push(s);
+        }
+      }
+    } else if (isBrvm) {
+      for (const [key, item] of Object.entries(AFRICAN_CATALOG)) {
+        if (item.exchange_code === 'BRVM') {
+          const s = await getStockData(key);
+          if (s && !results.some(r => r.symbol === s.symbol)) results.push(s);
+        }
+      }
+    } else if (isEgypt) {
+      for (const [key, item] of Object.entries(AFRICAN_CATALOG)) {
+        if (item.exchange_code === 'EGX') {
+          const s = await getStockData(key);
+          if (s && !results.some(r => r.symbol === s.symbol)) results.push(s);
+        }
       }
     } else {
-      // 2. Search catalog by ticker, company name, or sector
-      const cleanTicker = normalizeGseTicker(query);
-      for (const [key, item] of Object.entries(GSE_CATALOG)) {
+      // 2. Search catalog by ticker, company name, sector, country, or exchange
+      for (const [key, item] of Object.entries(AFRICAN_CATALOG)) {
         if (
           key === cleanTicker ||
+          key === query ||
           item.name.toUpperCase().includes(query) ||
-          item.sector.toUpperCase().includes(query)
+          item.sector.toUpperCase().includes(query) ||
+          item.country.toUpperCase().includes(query) ||
+          item.exchange_code.toUpperCase() === query
         ) {
-          const gseStock = await getGseStock(key);
-          if (gseStock && !results.some(r => r.symbol === gseStock.symbol)) {
-            results.push(gseStock);
+          const s = await getStockData(key);
+          if (s && !results.some(r => r.symbol === s.symbol)) {
+            results.push(s);
           }
         }
       }
 
-      // 3. Check regular lookup if not found in catalog or in addition
+      // 3. Fallback to general getStockData lookup
       if (results.length === 0) {
         const data = await getStockData(query);
         if (data) results.push(data);
@@ -1332,7 +2250,7 @@ app.get('/search', async (req: Request, res: Response) => {
     if (results.length === 0) {
       flash(
         req,
-        `No results for "${rawQuery}". Try Ghana stocks: MTNGH, GCB, TOTAL, CAL, EGH, or global: AAPL, TSLA, BTC-USD`,
+        `No results for "${rawQuery}". Try African stocks: MTNGH, DANGCEM, SCOM, NPN, SNTS, COMI, or global: AAPL, TSLA, BTC-USD`,
         'warning'
       );
     }

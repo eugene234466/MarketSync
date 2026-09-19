@@ -13,9 +13,9 @@
 <!-- HERO -->
 <section class="py-5 text-center border-bottom border-secondary mb-4">
     <h1 class="display-4 fw-bold text-success mb-2">MARKETSYNC</h1>
-    <p class="lead text-muted mb-4">Real-time global equities, crypto &amp; Ghana Stock Exchange (GSE) insights.</p>
-    <form action="{{ url_for('search') }}" method="GET" class="d-flex justify-content-center gap-2 mx-auto" style="max-width: 520px;">
-        <input type="text" name="q" placeholder="Track a stock (e.g. MTNGH, GCB, NVDA, BTC-USD)"
+    <p class="lead text-muted mb-4">Real-time global equities, crypto &amp; African stock markets (GSE, NGX, NSE, JSE, BRVM, EGX).</p>
+    <form action="{{ url_for('search') }}" method="GET" class="d-flex justify-content-center gap-2 mx-auto" style="max-width: 540px;">
+        <input type="text" name="q" placeholder="Track a stock (e.g. MTNGH, DANGCEM, SCOM, NPN, NVDA, BTC-USD)"
                class="form-control bg-dark text-white border-secondary"
                autocomplete="off">
         <button type="submit" class="btn btn-success px-4" id="hero_search_btn">
@@ -28,9 +28,9 @@
 <section class="mb-5">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="fw-bold mb-0 text-white">Market Overview</h2>
-        <span class="badge bg-secondary text-light">Global &amp; Regional</span>
+        <span class="badge bg-secondary text-light">Global &amp; African Benchmark Indices</span>
     </div>
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-6 g-3">
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 row-cols-lg-4 g-3">
         {% for index in indices %}
         <div class="col">
             <a href="{{ url_for('stock_detail', ticker=index.symbol) }}" class="text-decoration-none">
@@ -38,12 +38,11 @@
                     <div class="card-body">
                         <p class="text-muted small text-uppercase mb-1 text-truncate" title="{{ index.name }}">{{ index.name }}</p>
                         <h5 class="fw-bold text-white mb-1">
-                            {% if index.currency == 'GHS' %}GH₵{% elif index.currency == 'NGN' %}₦{% elif index.currency == 'XOF' %}CFA{% else %}${% endif %}{{ index.price }}
+                            {{ index.currency | currency_sym }}{{ index.price }}
                         </h5>
                         <p class="mb-0 fw-semibold small
                             {% if index.change_percent >= 0 %}text-success{% else %}text-danger{% endif %}">
-                            {% if index.change_percent >= 0 %}▲{% else %}▼{% endif %}
-                            {{ index.change_percent }}%
+                            {% if index.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ index.change_percent }}%
                         </p>
                     </div>
                 </div>
@@ -53,69 +52,351 @@
     </div>
 </section>
 
-<!-- GHANA STOCK EXCHANGE (GSE) SECTION -->
+<!-- AFRICAN STOCK MARKETS SECTION -->
 <section class="mb-5">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <div>
             <h2 class="fw-bold mb-0 text-white d-flex align-items-center gap-2">
-                <span class="badge bg-warning text-dark fs-6">🇬🇭 GSE</span>
-                Ghana Stock Exchange
+                <span class="badge bg-success text-dark fs-6">🌍 AFRICA</span>
+                African Stock Markets
             </h2>
-            <p class="text-muted small mb-0 mt-1">Live market prices, capitalizations, and trading quotes in Ghanaian Cedi (GH₵)</p>
+            <p class="text-muted small mb-0 mt-1">Live market data, quotes, and liquidity across GSE, NGX, NSE, JSE, BRVM &amp; EGX</p>
         </div>
-        <a href="{{ url_for('search', q='Ghana') }}" class="btn btn-outline-success btn-sm">
-            View All Ghana Stocks →
+        <a href="{{ url_for('search', q='Africa') }}" class="btn btn-outline-success btn-sm">
+            Explore All African Stocks →
         </a>
     </div>
 
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-3">
-        {% for stock in gse_stocks %}
-        <div class="col">
-            <div class="card h-100 bg-dark border-secondary">
-                <div class="card-body d-flex flex-column justify-content-between">
-                    <div>
-                        <div class="d-flex justify-content-between align-items-start mb-1">
-                            <span class="badge bg-secondary font-monospace">{{ stock.symbol }}</span>
-                            <span class="badge {% if stock.change_percent >= 0 %}bg-success text-dark{% else %}bg-danger text-white{% endif %} fw-bold">
-                                {% if stock.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ stock.change_percent }}%
-                            </span>
+    <!-- Exchange Selector Tabs -->
+    <ul class="nav nav-pills mb-3 gap-2 border-bottom border-secondary pb-3" id="marketTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active px-3 py-2 btn-sm fw-semibold text-white" id="tab-all-btn" data-bs-toggle="pill" data-bs-target="#tab-all" type="button" role="tab">
+                🌍 All Highlights
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link px-3 py-2 btn-sm fw-semibold text-white" id="tab-gse-btn" data-bs-toggle="pill" data-bs-target="#tab-gse" type="button" role="tab">
+                🇬🇭 Ghana (GSE)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link px-3 py-2 btn-sm fw-semibold text-white" id="tab-ngx-btn" data-bs-toggle="pill" data-bs-target="#tab-ngx" type="button" role="tab">
+                🇳🇬 Nigeria (NGX)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link px-3 py-2 btn-sm fw-semibold text-white" id="tab-nse-btn" data-bs-toggle="pill" data-bs-target="#tab-nse" type="button" role="tab">
+                🇰🇪 Kenya (NSE)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link px-3 py-2 btn-sm fw-semibold text-white" id="tab-jse-btn" data-bs-toggle="pill" data-bs-target="#tab-jse" type="button" role="tab">
+                🇿🇦 South Africa (JSE)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link px-3 py-2 btn-sm fw-semibold text-white" id="tab-brvm-btn" data-bs-toggle="pill" data-bs-target="#tab-brvm" type="button" role="tab">
+                🇨🇮 BRVM (WAEMU)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link px-3 py-2 btn-sm fw-semibold text-white" id="tab-egx-btn" data-bs-toggle="pill" data-bs-target="#tab-egx" type="button" role="tab">
+                🇪🇬 Egypt (EGX)
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab Panes -->
+    <div class="tab-content" id="marketTabsContent">
+        <!-- ALL TAB -->
+        <div class="tab-pane fade show active" id="tab-all" role="tabpanel">
+            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-3">
+                {% for stock in african_stocks %}
+                <div class="col">
+                    <div class="card h-100 bg-dark border-secondary">
+                        <div class="card-body d-flex flex-column justify-content-between">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <div class="d-flex align-items-center gap-1">
+                                        <span class="badge bg-secondary font-monospace">{{ stock.symbol }}</span>
+                                        <span class="badge bg-dark border border-secondary text-muted small">{{ stock.flag or '🌍' }} {{ stock.exchange_code or stock.currency }}</span>
+                                    </div>
+                                    <span class="badge {% if stock.change_percent >= 0 %}bg-success text-dark{% else %}bg-danger text-white{% endif %} fw-bold">
+                                        {% if stock.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ stock.change_percent }}%
+                                    </span>
+                                </div>
+                                <h6 class="text-white fw-bold mb-1 mt-2 text-truncate" title="{{ stock.name }}">{{ stock.name }}</h6>
+                                <p class="text-muted small mb-2 text-truncate">{{ stock.sector or stock.exchange }}</p>
+                                <div class="fs-4 fw-bold text-white mb-2">
+                                    {{ stock.currency | currency_sym }}{{ stock.price }}
+                                </div>
+                            </div>
+                            <div class="pt-2 border-top border-secondary d-flex justify-content-between align-items-center">
+                                <span class="text-muted small">Vol: {{ '{:,}'.format(stock.volume) if stock.volume else 'Active' }}</span>
+                                <a href="{{ url_for('stock_detail', ticker=stock.symbol) }}" class="btn btn-sm btn-outline-success py-0 px-2">
+                                    View
+                                </a>
+                            </div>
                         </div>
-                        <h6 class="text-white fw-bold mb-1 mt-2 text-truncate" title="{{ stock.name }}">{{ stock.name }}</h6>
-                        <div class="fs-4 fw-bold text-white mb-2">
-                            GH₵{{ stock.price }}
-                        </div>
-                    </div>
-                    <div class="pt-2 border-top border-secondary d-flex justify-content-between align-items-center">
-                        <span class="text-muted small">Vol: {{ '{:,}'.format(stock.volume) if stock.volume else 'Active' }}</span>
-                        <a href="{{ url_for('stock_detail', ticker=stock.symbol) }}" class="btn btn-sm btn-outline-success py-0 px-2">
-                            View
-                        </a>
                     </div>
                 </div>
+                {% endfor %}
             </div>
         </div>
-        {% endfor %}
+
+        <!-- GSE TAB -->
+        <div class="tab-pane fade" id="tab-gse" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">Ghana Stock Exchange • Accra, Ghana • Currency: Ghanaian Cedi (GH₵)</span>
+                <a href="{{ url_for('search', q='Ghana') }}" class="btn btn-sm btn-outline-warning">View All GSE →</a>
+            </div>
+            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-3">
+                {% for stock in gse_stocks %}
+                <div class="col">
+                    <div class="card h-100 bg-dark border-secondary">
+                        <div class="card-body d-flex flex-column justify-content-between">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <span class="badge bg-secondary font-monospace">{{ stock.symbol }}</span>
+                                    <span class="badge {% if stock.change_percent >= 0 %}bg-success text-dark{% else %}bg-danger text-white{% endif %} fw-bold">
+                                        {% if stock.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ stock.change_percent }}%
+                                    </span>
+                                </div>
+                                <h6 class="text-white fw-bold mb-1 mt-2 text-truncate" title="{{ stock.name }}">{{ stock.name }}</h6>
+                                <p class="text-muted small mb-2 text-truncate">{{ stock.sector }}</p>
+                                <div class="fs-4 fw-bold text-white mb-2">
+                                    {{ stock.currency | currency_sym }}{{ stock.price }}
+                                </div>
+                            </div>
+                            <div class="pt-2 border-top border-secondary d-flex justify-content-between align-items-center">
+                                <span class="text-muted small">Vol: {{ '{:,}'.format(stock.volume) if stock.volume else 'Active' }}</span>
+                                <a href="{{ url_for('stock_detail', ticker=stock.symbol) }}" class="btn btn-sm btn-outline-success py-0 px-2">View</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- NGX TAB -->
+        <div class="tab-pane fade" id="tab-ngx" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">Nigerian Exchange Group • Lagos, Nigeria • Currency: Nigerian Naira (₦)</span>
+                <a href="{{ url_for('search', q='Nigeria') }}" class="btn btn-sm btn-outline-success">View All NGX →</a>
+            </div>
+            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-3">
+                {% for stock in ngx_stocks %}
+                <div class="col">
+                    <div class="card h-100 bg-dark border-secondary">
+                        <div class="card-body d-flex flex-column justify-content-between">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <span class="badge bg-secondary font-monospace">{{ stock.symbol }}</span>
+                                    <span class="badge {% if stock.change_percent >= 0 %}bg-success text-dark{% else %}bg-danger text-white{% endif %} fw-bold">
+                                        {% if stock.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ stock.change_percent }}%
+                                    </span>
+                                </div>
+                                <h6 class="text-white fw-bold mb-1 mt-2 text-truncate" title="{{ stock.name }}">{{ stock.name }}</h6>
+                                <p class="text-muted small mb-2 text-truncate">{{ stock.sector }}</p>
+                                <div class="fs-4 fw-bold text-white mb-2">
+                                    {{ stock.currency | currency_sym }}{{ stock.price }}
+                                </div>
+                            </div>
+                            <div class="pt-2 border-top border-secondary d-flex justify-content-between align-items-center">
+                                <span class="text-muted small">Vol: {{ '{:,}'.format(stock.volume) if stock.volume else 'Active' }}</span>
+                                <a href="{{ url_for('stock_detail', ticker=stock.symbol) }}" class="btn btn-sm btn-outline-success py-0 px-2">View</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- NSE TAB -->
+        <div class="tab-pane fade" id="tab-nse" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">Nairobi Securities Exchange • Nairobi, Kenya • Currency: Kenyan Shilling (KSh)</span>
+                <a href="{{ url_for('search', q='Kenya') }}" class="btn btn-sm btn-outline-danger">View All NSE →</a>
+            </div>
+            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-3">
+                {% for stock in nse_stocks %}
+                <div class="col">
+                    <div class="card h-100 bg-dark border-secondary">
+                        <div class="card-body d-flex flex-column justify-content-between">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <span class="badge bg-secondary font-monospace">{{ stock.symbol }}</span>
+                                    <span class="badge {% if stock.change_percent >= 0 %}bg-success text-dark{% else %}bg-danger text-white{% endif %} fw-bold">
+                                        {% if stock.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ stock.change_percent }}%
+                                    </span>
+                                </div>
+                                <h6 class="text-white fw-bold mb-1 mt-2 text-truncate" title="{{ stock.name }}">{{ stock.name }}</h6>
+                                <p class="text-muted small mb-2 text-truncate">{{ stock.sector }}</p>
+                                <div class="fs-4 fw-bold text-white mb-2">
+                                    {{ stock.currency | currency_sym }}{{ stock.price }}
+                                </div>
+                            </div>
+                            <div class="pt-2 border-top border-secondary d-flex justify-content-between align-items-center">
+                                <span class="text-muted small">Vol: {{ '{:,}'.format(stock.volume) if stock.volume else 'Active' }}</span>
+                                <a href="{{ url_for('stock_detail', ticker=stock.symbol) }}" class="btn btn-sm btn-outline-success py-0 px-2">View</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- JSE TAB -->
+        <div class="tab-pane fade" id="tab-jse" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">Johannesburg Stock Exchange • Johannesburg, South Africa • Currency: South African Rand (R)</span>
+                <a href="{{ url_for('search', q='South Africa') }}" class="btn btn-sm btn-outline-info">View All JSE →</a>
+            </div>
+            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-3">
+                {% for stock in jse_stocks %}
+                <div class="col">
+                    <div class="card h-100 bg-dark border-secondary">
+                        <div class="card-body d-flex flex-column justify-content-between">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <span class="badge bg-secondary font-monospace">{{ stock.symbol }}</span>
+                                    <span class="badge {% if stock.change_percent >= 0 %}bg-success text-dark{% else %}bg-danger text-white{% endif %} fw-bold">
+                                        {% if stock.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ stock.change_percent }}%
+                                    </span>
+                                </div>
+                                <h6 class="text-white fw-bold mb-1 mt-2 text-truncate" title="{{ stock.name }}">{{ stock.name }}</h6>
+                                <p class="text-muted small mb-2 text-truncate">{{ stock.sector }}</p>
+                                <div class="fs-4 fw-bold text-white mb-2">
+                                    {{ stock.currency | currency_sym }}{{ stock.price }}
+                                </div>
+                            </div>
+                            <div class="pt-2 border-top border-secondary d-flex justify-content-between align-items-center">
+                                <span class="text-muted small">Vol: {{ '{:,}'.format(stock.volume) if stock.volume else 'Active' }}</span>
+                                <a href="{{ url_for('stock_detail', ticker=stock.symbol) }}" class="btn btn-sm btn-outline-success py-0 px-2">View</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- BRVM TAB -->
+        <div class="tab-pane fade" id="tab-brvm" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">Bourse Régionale des Valeurs Mobilières • Abidjan (WAEMU) • Currency: West African CFA (CFA)</span>
+                <a href="{{ url_for('search', q='BRVM') }}" class="btn btn-sm btn-outline-warning">View All BRVM →</a>
+            </div>
+            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-3">
+                {% for stock in brvm_stocks %}
+                <div class="col">
+                    <div class="card h-100 bg-dark border-secondary">
+                        <div class="card-body d-flex flex-column justify-content-between">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <span class="badge bg-secondary font-monospace">{{ stock.symbol }}</span>
+                                    <span class="badge {% if stock.change_percent >= 0 %}bg-success text-dark{% else %}bg-danger text-white{% endif %} fw-bold">
+                                        {% if stock.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ stock.change_percent }}%
+                                    </span>
+                                </div>
+                                <h6 class="text-white fw-bold mb-1 mt-2 text-truncate" title="{{ stock.name }}">{{ stock.name }}</h6>
+                                <p class="text-muted small mb-2 text-truncate">{{ stock.sector }}</p>
+                                <div class="fs-4 fw-bold text-white mb-2">
+                                    {{ stock.currency | currency_sym }}{{ stock.price }}
+                                </div>
+                            </div>
+                            <div class="pt-2 border-top border-secondary d-flex justify-content-between align-items-center">
+                                <span class="text-muted small">Vol: {{ '{:,}'.format(stock.volume) if stock.volume else 'Active' }}</span>
+                                <a href="{{ url_for('stock_detail', ticker=stock.symbol) }}" class="btn btn-sm btn-outline-success py-0 px-2">View</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- EGX TAB -->
+        <div class="tab-pane fade" id="tab-egx" role="tabpanel">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-muted small">Egyptian Exchange • Cairo, Egypt • Currency: Egyptian Pound (E£)</span>
+                <a href="{{ url_for('search', q='Egypt') }}" class="btn btn-sm btn-outline-danger">View All EGX →</a>
+            </div>
+            <div class="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-3">
+                {% for stock in egx_stocks %}
+                <div class="col">
+                    <div class="card h-100 bg-dark border-secondary">
+                        <div class="card-body d-flex flex-column justify-content-between">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <span class="badge bg-secondary font-monospace">{{ stock.symbol }}</span>
+                                    <span class="badge {% if stock.change_percent >= 0 %}bg-success text-dark{% else %}bg-danger text-white{% endif %} fw-bold">
+                                        {% if stock.change_percent >= 0 %}▲ +{% else %}▼ {% endif %}{{ stock.change_percent }}%
+                                    </span>
+                                </div>
+                                <h6 class="text-white fw-bold mb-1 mt-2 text-truncate" title="{{ stock.name }}">{{ stock.name }}</h6>
+                                <p class="text-muted small mb-2 text-truncate">{{ stock.sector }}</p>
+                                <div class="fs-4 fw-bold text-white mb-2">
+                                    {{ stock.currency | currency_sym }}{{ stock.price }}
+                                </div>
+                            </div>
+                            <div class="pt-2 border-top border-secondary d-flex justify-content-between align-items-center">
+                                <span class="text-muted small">Vol: {{ '{:,}'.format(stock.volume) if stock.volume else 'Active' }}</span>
+                                <a href="{{ url_for('stock_detail', ticker=stock.symbol) }}" class="btn btn-sm btn-outline-success py-0 px-2">View</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
     </div>
 </section>
 
 <!-- QUICK TRACK -->
 <section class="mb-5">
     <h2 class="fw-bold mb-3 text-white">Quick Track</h2>
-    <div class="d-flex flex-wrap gap-2">
-        <span class="badge bg-dark border border-secondary text-muted align-self-center py-2 px-3 me-2">Ghana (GSE):</span>
-        {% for ticker in ['MTNGH', 'GCB', 'TOTAL', 'CAL', 'EGH', 'GOIL'] %}
-        <a href="{{ url_for('stock_detail', ticker=ticker) }}"
-           class="btn btn-outline-warning btn-sm fw-semibold">
-            {{ ticker }}
-        </a>
+    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+        <span class="badge bg-dark border border-secondary text-muted py-2 px-3">🇬🇭 Ghana (GSE):</span>
+        {% for ticker in ['MTNGH', 'GCB', 'TOTAL', 'CAL', 'EGH'] %}
+        <a href="{{ url_for('stock_detail', ticker=ticker) }}" class="btn btn-outline-warning btn-sm fw-semibold">{{ ticker }}</a>
         {% endfor %}
 
-        <span class="badge bg-dark border border-secondary text-muted align-self-center py-2 px-3 ms-2 me-2">Global:</span>
+        <span class="badge bg-dark border border-secondary text-muted py-2 px-3 ms-md-2">🇳🇬 Nigeria (NGX):</span>
+        {% for ticker in ['DANGCEM', 'MTNN', 'ZENITHBANK', 'GTCO', 'SEPLAT'] %}
+        <a href="{{ url_for('stock_detail', ticker=ticker) }}" class="btn btn-outline-success btn-sm fw-semibold">{{ ticker }}</a>
+        {% endfor %}
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+        <span class="badge bg-dark border border-secondary text-muted py-2 px-3">🇰🇪 Kenya (NSE):</span>
+        {% for ticker in ['SCOM', 'EQTY', 'KCB', 'EABL'] %}
+        <a href="{{ url_for('stock_detail', ticker=ticker) }}" class="btn btn-outline-danger btn-sm fw-semibold">{{ ticker }}</a>
+        {% endfor %}
+
+        <span class="badge bg-dark border border-secondary text-muted py-2 px-3 ms-md-2">🇿🇦 South Africa (JSE):</span>
+        {% for ticker in ['NPN', 'FSR', 'SOL', 'AGL'] %}
+        <a href="{{ url_for('stock_detail', ticker=ticker) }}" class="btn btn-outline-info btn-sm fw-semibold">{{ ticker }}</a>
+        {% endfor %}
+
+        <span class="badge bg-dark border border-secondary text-muted py-2 px-3 ms-md-2">🇨🇮 BRVM:</span>
+        {% for ticker in ['SNTS', 'SGBC', 'ECOC'] %}
+        <a href="{{ url_for('stock_detail', ticker=ticker) }}" class="btn btn-outline-warning btn-sm fw-semibold">{{ ticker }}</a>
+        {% endfor %}
+
+        <span class="badge bg-dark border border-secondary text-muted py-2 px-3 ms-md-2">🇪🇬 Egypt (EGX):</span>
+        {% for ticker in ['COMI', 'ETEL', 'EAST'] %}
+        <a href="{{ url_for('stock_detail', ticker=ticker) }}" class="btn btn-outline-danger btn-sm fw-semibold">{{ ticker }}</a>
+        {% endfor %}
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 align-items-center mt-3">
+        <span class="badge bg-dark border border-secondary text-muted py-2 px-3">Global Tech &amp; Crypto:</span>
         {% for ticker in ['AAPL', 'GOOGL', 'TSLA', 'NVDA', 'BTC-USD', 'ETH-USD'] %}
-        <a href="{{ url_for('stock_detail', ticker=ticker) }}"
-           class="btn btn-outline-success btn-sm">
-            {{ ticker }}
-        </a>
+        <a href="{{ url_for('stock_detail', ticker=ticker) }}" class="btn btn-outline-secondary btn-sm">{{ ticker }}</a>
         {% endfor %}
     </div>
 </section>
